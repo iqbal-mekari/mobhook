@@ -1,0 +1,356 @@
+use anyhow::{Context, Result};
+use std::collections::HashSet;
+use std::fs;
+use std::io::Write;
+use std::os::unix::fs::PermissionsExt;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+use super::config::{HookEntry, HookMode, MobhookConfig};
+use super::logger::Logger;
+use super::preset::Preset;
+
+pub struct HookManager<'a> {
+    project_root: PathBuf,
+    logger: Option<&'a Logger>,
+}
+
+impl<'a> HookManager<'a> {
+    pub fn new(project_root: &Path) -> Self {
+        Self {
+            project_root: project_root.to_path_buf(),
+            logger: None,
+        }
+    }
+
+    pub fn with_logger(project_root: &Path, logger: &'a Logger) -> Self {
+        Self {
+            project_root: project_root.to_path_buf(),
+            logger: Some(logger),
+        }
+    }
+
+    pub fn hooks_dir(&self) -> PathBuf {
+        self.project_root.join(".mobhook")
+    }
+
+    fn log_info(&self, msg: &str) {
+        if let Some(l) = self.logger {
+            l.info(msg);
+        }
+    }
+
+    fn log_success(&self, msg: &str) {
+        if let Some(l) = self.logger {
+            l.success(msg);
+        }
+    }
+
+    fn log_warn(&self, msg: &str) {
+        if let Some(l) = self.logger {
+            l.warn(msg);
+        }
+    }
+
+    /// Validate this is a git repository.
+    pub fn validate_git_repo(&self) -> Result<()> {
+        let git_dir = self.project_root.join(".git");
+        if !git_dir.exists() {
+            anyhow::bail!("Not a git repository: {}", self.project_root.display());
+        }
+        Ok(())
+    }
+
+    /// One-time git setup: set core.hooksPath and update .gitignore.
+    pub fn setup(&self) -> Result<()> {
+        self.validate_git_repo()?;
+        self.set_hooks_path()?;
+        self.ensure_gitignore_entry(".hook-reports/")?;
+        self.remove_gitignore_entry(".mobhook/")?;
+        Ok(())
+    }
+
+    /// Regenerate .mobhook/ from config. Fully idempotent.
+    pub fn run(&self, config: &MobhookConfig, presets: &[Box<dyn Preset>]) -> Result<()> {
+        self.validate_git_repo()?;
+
+        let step_names = self.collect_step_names(config);
+        let preserved = self.preserve_custom_hooks(&step_names);
+
+        // Clean slate
+        let hooks_dir = self.hooks_dir();
+        if hooks_dir.exists() {
+            fs::remove_dir_all(&hooks_dir)?;
+        }
+        fs::create_dir_all(&hooks_dir)?;
+
+        // Restore custom hooks
+        self.restore_custom_hooks(&preserved);
+
+        // Install presets and generate scripts
+        for (hook_type, hook_config) in &config.hooks {
+            if hook_config.order.is_empty() {
+                continue;
+            }
+
+            for entry in &hook_config.order {
+                if let Some(preset) = presets.iter().find(|p| p.name() == entry.name) {
+                    let dest = hooks_dir.join(preset.name());
+                    if !dest.exists() {
+                        preset.install(&hooks_dir)?;
+                        self.log_success(&format!(
+                            "Installed preset '{}/' to .mobhook/",
+                            preset.name()
+                        ));
+                    }
+                }
+            }
+
+            let script =
+                self.generate_hook_script(hook_type, &hook_config.order, config.mode);
+            let hook_file = hooks_dir.join(hook_type);
+            fs::write(&hook_file, &script)?;
+
+            let mut perms = fs::metadata(&hook_file)?.permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&hook_file, perms)?;
+
+            let names: Vec<&str> = hook_config.order.iter().map(|e| e.name.as_str()).collect();
+            self.log_success(&format!(
+                "Generated {} hook ({} step(s): {})",
+                hook_type,
+                hook_config.order.len(),
+                names.join(" -> "),
+            ));
+        }
+
+        Ok(())
+    }
+
+    /// Remove .mobhook/ and reset git hooksPath.
+    pub fn uninstall(&self) -> Result<()> {
+        self.validate_git_repo()?;
+
+        let hooks_dir = self.hooks_dir();
+        if hooks_dir.exists() {
+            fs::remove_dir_all(&hooks_dir)?;
+            self.log_success("Removed .mobhook/ directory");
+        } else {
+            self.log_warn(".mobhook/ not found -- nothing to remove");
+        }
+
+        self.unset_hooks_path()?;
+        self.log_success("Restored default git hooks path");
+        Ok(())
+    }
+
+    /// Generate a combined bash script for a hook type.
+    pub fn generate_hook_script(
+        &self,
+        hook_type: &str,
+        steps: &[HookEntry],
+        global_mode: HookMode,
+    ) -> String {
+        let total = steps.len();
+        let has_any_warning = steps
+            .iter()
+            .any(|s| s.effective_mode(global_mode) == HookMode::Warning);
+
+        let mut buf = String::new();
+        buf.push_str("#!/bin/bash\n");
+        buf.push_str("# Generated by mobhook -- do not edit manually.\n");
+        buf.push_str("# Regenerate with: mobhook update\n\n");
+        buf.push_str("set -e\n\n");
+        buf.push_str("HOOK_DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\n");
+        buf.push_str("RED='\\033[0;31m'\n");
+        buf.push_str("GREEN='\\033[0;32m'\n");
+        buf.push_str("YELLOW='\\033[0;33m'\n");
+        buf.push_str("BLUE='\\033[0;34m'\n");
+        buf.push_str("NC='\\033[0m'\n");
+
+        if has_any_warning {
+            buf.push_str("\nWARN_COUNT=0\n");
+        }
+        buf.push('\n');
+
+        for (i, entry) in steps.iter().enumerate() {
+            let num = i + 1;
+            let effective_mode = entry.effective_mode(global_mode);
+
+            buf.push_str(&format!(
+                "echo -e \"${{BLUE}}[{}/{}] {} -> {}${{NC}}\"\n",
+                num, total, hook_type, entry.name,
+            ));
+            buf.push_str("set +e\n");
+            buf.push_str(&format!(
+                "\"$HOOK_DIR/{}/script.sh\" \"$@\"\n",
+                entry.name
+            ));
+            buf.push_str("EXIT_CODE=$?\n");
+            buf.push_str("set -e\n");
+            buf.push_str("if [ $EXIT_CODE -ne 0 ]; then\n");
+
+            if effective_mode == HookMode::Warning {
+                buf.push_str(&format!(
+                    "  echo -e \"${{YELLOW}}WARNING: '{}' failed (exit $EXIT_CODE). Continuing in warning mode.${{NC}}\" >&2\n",
+                    entry.name,
+                ));
+                buf.push_str("  WARN_COUNT=$((WARN_COUNT + 1))\n");
+                buf.push_str("else\n");
+            } else {
+                buf.push_str(&format!(
+                    "  echo -e \"${{RED}}FAIL: '{}' failed (exit $EXIT_CODE). Aborting.${{NC}}\" >&2\n",
+                    entry.name,
+                ));
+                buf.push_str("  exit $EXIT_CODE\n");
+                buf.push_str("else\n");
+            }
+
+            buf.push_str(&format!(
+                "  echo -e \"${{GREEN}}OK {} done${{NC}}\"\n",
+                entry.name
+            ));
+            buf.push_str("fi\n\n");
+        }
+
+        if has_any_warning {
+            buf.push_str("if [ $WARN_COUNT -gt 0 ]; then\n");
+            buf.push_str("  echo -e \"${YELLOW}[WARN] $WARN_COUNT step(s) had issues but were non-blocking.${NC}\" >&2\n");
+            buf.push_str("fi\n\n");
+        }
+
+        buf
+    }
+
+    fn collect_step_names(&self, config: &MobhookConfig) -> HashSet<String> {
+        config
+            .hooks
+            .values()
+            .flat_map(|h| h.order.iter().map(|e| e.name.clone()))
+            .collect()
+    }
+
+    fn preserve_custom_hooks(&self, step_names: &HashSet<String>) -> Vec<(String, PathBuf)> {
+        let mut preserved = Vec::new();
+        let hooks_dir = self.hooks_dir();
+        if !hooks_dir.exists() {
+            return preserved;
+        }
+
+        for name in step_names {
+            let step_dir = hooks_dir.join(name);
+            let script_file = step_dir.join("script.sh");
+            if !step_dir.exists() || !script_file.exists() {
+                continue;
+            }
+
+            let backup_dir =
+                std::env::temp_dir().join(format!("mobhook_preserve_{}", name));
+            if backup_dir.exists() {
+                fs::remove_dir_all(&backup_dir).ok();
+            }
+            copy_dir_recursive(&step_dir, &backup_dir).ok();
+            preserved.push((name.clone(), backup_dir));
+        }
+
+        preserved
+    }
+
+    fn restore_custom_hooks(&self, preserved: &[(String, PathBuf)]) {
+        let hooks_dir = self.hooks_dir();
+        for (name, backup_path) in preserved {
+            let dest = hooks_dir.join(name);
+            if dest.exists() {
+                fs::remove_dir_all(backup_path).ok();
+                continue;
+            }
+            copy_dir_recursive(backup_path, &dest).ok();
+            let script = dest.join("script.sh");
+            if script.exists() {
+                let mut perms = fs::metadata(&script).unwrap().permissions();
+                perms.set_mode(0o755);
+                fs::set_permissions(&script, perms).ok();
+            }
+            fs::remove_dir_all(backup_path).ok();
+        }
+    }
+
+    fn set_hooks_path(&self) -> Result<()> {
+        let output = Command::new("git")
+            .args([
+                "-C",
+                self.project_root.to_str().unwrap(),
+                "config",
+                "core.hooksPath",
+                ".mobhook",
+            ])
+            .output()
+            .context("Failed to run git config")?;
+        if output.status.success() {
+            self.log_success("Set core.hooksPath to .mobhook");
+        }
+        Ok(())
+    }
+
+    fn unset_hooks_path(&self) -> Result<()> {
+        Command::new("git")
+            .args([
+                "-C",
+                self.project_root.to_str().unwrap(),
+                "config",
+                "--local",
+                "--unset",
+                "core.hooksPath",
+            ])
+            .output()
+            .context("Failed to run git config")?;
+        Ok(())
+    }
+
+    fn ensure_gitignore_entry(&self, entry: &str) -> Result<()> {
+        let gitignore = self.project_root.join(".gitignore");
+        if gitignore.exists() {
+            let content = fs::read_to_string(&gitignore)?;
+            if content.lines().any(|l| l.trim() == entry) {
+                return Ok(());
+            }
+            let prefix = if !content.is_empty() && !content.ends_with('\n') {
+                "\n"
+            } else {
+                ""
+            };
+            let mut f = fs::OpenOptions::new().append(true).open(&gitignore)?;
+            write!(f, "{}{}\n", prefix, entry)?;
+        } else {
+            fs::write(&gitignore, format!("{}\n", entry))?;
+        }
+        Ok(())
+    }
+
+    fn remove_gitignore_entry(&self, entry: &str) -> Result<()> {
+        let gitignore = self.project_root.join(".gitignore");
+        if !gitignore.exists() {
+            return Ok(());
+        }
+        let content = fs::read_to_string(&gitignore)?;
+        let filtered: Vec<&str> = content.lines().filter(|l| l.trim() != entry).collect();
+        if filtered.len() < content.lines().count() {
+            fs::write(&gitignore, format!("{}\n", filtered.join("\n")))?;
+        }
+        Ok(())
+    }
+}
+
+fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
+    fs::create_dir_all(dst)?;
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let target = dst.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_dir_recursive(&entry.path(), &target)?;
+        } else {
+            fs::copy(entry.path(), &target)?;
+        }
+    }
+    Ok(())
+}
