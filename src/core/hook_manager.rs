@@ -315,7 +315,7 @@ impl<'a> HookManager<'a> {
                 ""
             };
             let mut f = fs::OpenOptions::new().append(true).open(&gitignore)?;
-            write!(f, "{}{}\n", prefix, entry)?;
+            writeln!(f, "{}{}", prefix, entry)?;
         } else {
             fs::write(&gitignore, format!("{}\n", entry))?;
         }
