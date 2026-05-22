@@ -1,0 +1,237 @@
+# =============================================================================
+# Mobile Security: Gitleaks Configuration (v8.x format)
+# =============================================================================
+# Gitleaks config for mobile security scanning
+# Focus: Detect API keys, credentials, and sensitive data in Flutter projects
+# =============================================================================
+
+title = "mobhook Security Gitleaks Configuration"
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CUSTOM RULES FOR MOBILE SECRET DETECTION
+# ═══════════════════════════════════════════════════════════════════════════
+
+[[rules]]
+id = "firebase-api-key"
+description = "Firebase API Key Pattern"
+regex = '''AIzaSy[A-Za-z0-9_-]{35}'''
+keywords = ["AIzaSy"]
+severity = "ERROR"
+
+[[rules]]
+id = "aws-access-key"
+description = "AWS Access Key ID"
+regex = '''(A3T[A-Z0-9]|AKIA|ASIA|ABIA|ACCA)[A-Z0-9]{16}'''
+keywords = ["AKIA", "ASIA", "ABIA", "ACCA"]
+severity = "ERROR"
+
+[[rules]]
+id = "aws-secret-key"
+description = "AWS Secret Key"
+regex = '''aws_secret_access_key\s*=\s*["\']?[A-Za-z0-9/+=]{40}["\']?'''
+keywords = ["aws_secret_access_key"]
+severity = "ERROR"
+
+[[rules]]
+id = "github-pat"
+description = "GitHub Personal Access Token"
+regex = '''ghp_[A-Za-z0-9]{36}'''
+keywords = ["ghp_"]
+severity = "ERROR"
+
+[[rules]]
+id = "github-oauth"
+description = "GitHub OAuth Token"
+regex = '''gho_[A-Za-z0-9]{36}'''
+keywords = ["gho_"]
+severity = "ERROR"
+
+[[rules]]
+id = "github-app"
+description = "GitHub App Token"
+regex = '''(ghu|ghs|ghr)_[A-Za-z0-9]{36}'''
+keywords = ["ghu_", "ghs_", "ghr_"]
+severity = "ERROR"
+
+[[rules]]
+id = "stripe-api-key"
+description = "Stripe API Key"
+regex = '''(pk|sk|sk_test|sk_live)_[a-z]{2}_[0-9A-Za-z]{24,}'''
+keywords = ["pk_", "sk_", "sk_test", "sk_live"]
+severity = "ERROR"
+
+[[rules]]
+id = "slack-token"
+description = "Slack API Token"
+regex = '''xox[baprs]-[A-Za-z0-9-]{10,50}'''
+keywords = ["xoxb-", "xoxp-", "xoxa-", "xoxr-", "xoxs-"]
+severity = "ERROR"
+
+[[rules]]
+id = "slack-webhook"
+description = "Slack Webhook URL"
+regex = '''hooks\.slack\.com/services/[A-Z0-9]{9,}/[A-Z0-9]{9,}/[A-Za-z0-9_]{24}'''
+keywords = ["hooks.slack.com"]
+severity = "ERROR"
+
+[[rules]]
+id = "sendgrid-key"
+description = "SendGrid API Key"
+regex = '''SG\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}'''
+keywords = ["SG."]
+severity = "ERROR"
+
+[[rules]]
+id = "twilio-key"
+description = "Twilio API Key"
+regex = '''SK[0-9a-f]{32}'''
+keywords = ["SK"]
+severity = "ERROR"
+
+[[rules]]
+id = "mailgun-key"
+description = "Mailgun API Key"
+regex = '''key-[0-9a-zA-Z]{32}'''
+keywords = ["key-"]
+severity = "ERROR"
+
+[[rules]]
+id = "generic-api-key"
+description = "Generic API Key in code"
+regex = '''(?:api[_-]?key|apikey)\s*[:=]\s*["\'][A-Za-z0-9_\-]{20,}["\']'''
+entropy = 3.5
+keywords = ["apikey", "api_key", "api-key"]
+severity = "ERROR"
+
+[[rules]]
+id = "jwt-token"
+description = "JWT Token"
+regex = '''eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*'''
+entropy = 4.0
+keywords = ["eyJ"]
+severity = "ERROR"
+
+[[rules]]
+id = "private-key"
+description = "Private Key"
+regex = '''-----BEGIN (?:RSA |DSA |EC |OPENSSH )?PRIVATE KEY-----'''
+keywords = ["-----BEGIN"]
+severity = "ERROR"
+
+[[rules]]
+id = "facebook-token"
+description = "Facebook Access Token"
+regex = '''EAAB[a-z0-9A-Z]{20,}'''
+keywords = ["EAAB"]
+severity = "ERROR"
+
+[[rules]]
+id = "twitter-key"
+description = "Twitter Bearer Token"
+regex = '''[Bb]earer\s+[A-Za-z0-9]{35,44}'''
+keywords = ["bearer", "twitter"]
+severity = "ERROR"
+
+[[rules]]
+id = "shopify-token"
+description = "Shopify Access Token"
+regex = '''shpat_[a-fA-F0-9]{32}'''
+keywords = ["shpat_"]
+severity = "ERROR"
+
+[[rules]]
+id = "flutter-hardcoded-secret"
+description = "Hardcoded secret in Flutter code"
+regex = '''(?:const|final|static)\s+String\s+(?:secret|token|password|apiKey)\s*=\s*["\'][A-Za-z0-9_\-]{16,}["\']'''
+entropy = 3.0
+keywords = ["secret", "token", "password", "apiKey"]
+severity = "ERROR"
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ALLOWLIST - Files that are gitignored or safe to ignore
+# ═══════════════════════════════════════════════════════════════════════════
+
+[allowlist]
+description = "Allowlist for gitignored files and false positives"
+paths = [
+    # Metadata/tool directories
+    '''.entire/''',
+    '''.mobhook-ci/''',
+    '''qa_tools/''',
+    '''TalentaTests/''',
+
+    # Gitignored credential files
+    '''google-services\.json$''',
+    '''GoogleService-Info\.plist$''',
+    '''key\.properties$''',
+    '''keystore\.properties$''',
+    '''\.env$''',
+    '''\.env\.''',
+    '''env\.properties$''',
+    '''service_account_key\.json$''',
+
+    # Lock files
+    '''package-lock\.json$''',
+    '''yarn\.lock$''',
+    '''pubspec\.lock$''',
+    '''Podfile\.lock$''',
+    '''Gemfile\.lock$''',
+    '''Podfile\.lock$''',
+    '''\.lock$''',
+
+    # Build directories
+    '''\.git/''',
+    '''\.dart_tool/''',
+    '''build/''',
+    '''\.gradle/''',
+    '''node_modules/''',
+    '''Pods/''',
+
+    # Test directories
+    '''test/''',
+    '''test_driver/''',
+    '''integration_test/''',
+    '''\.test\.dart$''',
+    '''_test\.dart$''',
+
+    # Sample/Example directories
+    # NOTE: 'example/' is commented out by default for mobhook's own example directory
+    # Uncomment for production use if you want to exclude example directories from scanning
+    '''samples/''',
+    # '''example/''',
+    '''examples/''',
+    '''sample/''',
+
+    # Binary files
+    '''\.apk$''',
+    '''\.aab$''',
+    '''\.ipa$''',
+    '''\.keystore$''',
+    '''\.jks$''',
+    '''\.p12$''',
+    '''\.pfx$''',
+
+    # Media files
+    '''\.png$''',
+    '''\.jpg$''',
+    '''\.jpeg$''',
+    '''\.gif$''',
+    '''\.svg$''',
+    '''\.pdf$''',
+
+    # Generated/IDE
+    '''\.iml$''',
+    '''\.xcarchive$''',
+    '''\.framework$''',
+
+    # Example/template files
+    '''\.env\.example$''',
+    '''\.env\.sample$''',
+    '''\.md$''',
+
+    # Scan reports (avoid self-detection)
+    '''.hook-reports/''',
+    '''gitleaks-report\.json$''',
+    '''mobsfscan-report\.json$''',
+    '''security-scan-report\.md$'''
+]

@@ -1,0 +1,49 @@
+---
+# mobsfscan configuration file
+# https://github.com/MobSF/mobsfscan#configure-mobsfscan
+
+# Files to ignore (glob patterns)
+ignore-filenames:
+  - "*.g.dart"
+  - "*.freezed.dart"
+  - "*.gr.dart"
+  - "*.mocks.dart"
+  - "google-services.json"
+  - "GoogleService-Info.plist"
+  - ".env*"
+  - "strings.xml"    # Android resource files; DOCTYPE+ENTITY causes XML parse warnings; gitleaks handles secrets
+
+# Directories to skip
+ignore-paths:
+  - test
+  - test_driver
+  - integration_test
+  - samples
+  - examples
+  - build
+  - .dart_tool
+  - .gradle
+  - node_modules
+  - Pods
+  - .git
+  - .hook-reports
+  - .mobhook-ci
+  - qa_tools
+  - TalentaTests
+
+# Rules to ignore (INFO-level best practices that may not apply)
+ignore-rules:
+  - android_certificate_transparency  # Certificate transparency is optional
+  - android_safetynet_api             # SafetyNet is deprecated, Play Integrity is replacement
+  - android_root_detection            # Root detection is optional security measure
+  - android_prevent_screenshot        # Screenshot prevention depends on app requirements
+  - android_detect_tapjacking         # Tapjacking protection depends on app requirements
+  - android_certificate_pinning       # Certificate pinning depends on app requirements
+  - android_kotlin_hardcoded          # Gitleaks handles secret detection with better entropy checks
+  - android_java_hardcoded            # Gitleaks handles secret detection with better entropy checks
+  - ios_hardcoded_secret              # Gitleaks handles secret detection with better entropy checks
+
+# Minimum severity to report (only WARNING and above will be reported)
+severity-filter:
+  - WARNING
+  - ERROR
