@@ -50,32 +50,25 @@ pub fn run() -> Result<()> {
 
     match cli.command {
         Commands::Init { force, verbose, path } => {
-            println!("init: force={force}, verbose={verbose}, path={path:?}");
-            Ok(())
+            crate::commands::init::run(force, verbose, path)
         }
         Commands::Update { verbose } => {
-            println!("update: verbose={verbose}");
-            Ok(())
+            crate::commands::update::run(verbose)
         }
         Commands::Create { name } => {
-            println!("create: name={name}");
-            Ok(())
+            crate::commands::create::run(&name)
         }
         Commands::Fetch { preset } => {
-            println!("fetch: preset={preset:?}");
-            Ok(())
+            crate::commands::fetch::run(preset)
         }
         Commands::List => {
-            println!("list");
-            Ok(())
+            crate::commands::list::run()
         }
         Commands::Remove => {
-            println!("remove");
-            Ok(())
+            crate::commands::remove::run()
         }
         Commands::Doctor => {
-            println!("doctor");
-            Ok(())
+            crate::commands::doctor::run()
         }
     }
 }
