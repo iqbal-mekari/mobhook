@@ -1,0 +1,39 @@
+[package]
+name = "mobhook"
+version = "0.1.0"
+edition = "2021"
+description = "Mobile-first git hooks manager — like Husky, but for mobile devs"
+license = "MIT"
+repository = "https://github.com/iqbal-mekari/mobhook"
+readme = "README.md"
+
+[[bin]]
+name = "mobhook"
+path = "src/main.rs"
+
+[lib]
+name = "mobhook"
+path = "src/lib.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+anyhow = "1"
+thiserror = "2"
+colored = "2"
+git2 = "0.19"
+include_dir = "0.7"
+dirs = "6"
+sha2 = "0.10"
+reqwest = { version = "0.12", features = ["blocking"] }
+serde_json = "1"
+flate2 = "1"
+tar = "0.4"
+bytes = "1"
+regex = "1"
+
+[dev-dependencies]
+tempfile = "3"
+assert_cmd = "2"
+predicates = "3"
