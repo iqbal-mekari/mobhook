@@ -53,7 +53,12 @@ pub fn run() -> Result<()> {
     // Check git config
     logger.info("Git configuration:");
     let output = std::process::Command::new("git")
-        .args(["-C", project_root.to_str().unwrap_or("."), "config", "core.hooksPath"])
+        .args([
+            "-C",
+            project_root.to_str().unwrap_or("."),
+            "config",
+            "core.hooksPath",
+        ])
         .output();
     match output {
         Ok(o) if o.status.success() => {
@@ -61,7 +66,10 @@ pub fn run() -> Result<()> {
             if path.trim() == ".mobhook" {
                 logger.success("core.hooksPath = .mobhook");
             } else {
-                logger.warn(&format!("core.hooksPath = {} (expected .mobhook)", path.trim()));
+                logger.warn(&format!(
+                    "core.hooksPath = {} (expected .mobhook)",
+                    path.trim()
+                ));
                 issues += 1;
             }
         }
@@ -79,7 +87,9 @@ pub fn run() -> Result<()> {
         if tools::find_tool(name).is_some() {
             logger.success(&format!("{name}: available"));
         } else {
-            logger.warn(&format!("{name}: not found (will be auto-installed on first use)"));
+            logger.warn(&format!(
+                "{name}: not found (will be auto-installed on first use)"
+            ));
         }
     }
 

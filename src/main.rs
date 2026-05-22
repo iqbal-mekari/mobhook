@@ -2,9 +2,9 @@ use std::env;
 use std::process;
 
 mod cli;
+mod commands;
 mod core;
 mod presets;
-mod commands;
 
 fn main() {
     // Global kill switch

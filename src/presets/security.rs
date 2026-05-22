@@ -1,5 +1,5 @@
+use crate::core::preset::{InstallMethod, Preset, PresetFile, Tool};
 use include_dir::{include_dir, Dir};
-use crate::core::preset::{Preset, PresetFile, Tool, InstallMethod};
 
 static SECURITY_DIR: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/presets/security");
 
@@ -14,11 +14,7 @@ impl Preset for SecurityPreset {
         SECURITY_DIR
             .files()
             .map(|f| PresetFile {
-                relative_path: f.path()
-                    .file_name()
-                    .unwrap()
-                    .to_string_lossy()
-                    .to_string(),
+                relative_path: f.path().file_name().unwrap().to_string_lossy().to_string(),
                 content: f.contents(),
             })
             .collect()

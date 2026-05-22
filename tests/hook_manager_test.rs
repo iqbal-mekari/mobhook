@@ -14,11 +14,7 @@ order = ["security"]
     let dir = tempfile::TempDir::new().unwrap();
     let mgr = HookManager::new(dir.path());
 
-    let script = mgr.generate_hook_script(
-        "pre-push",
-        &config.hooks["pre-push"].order,
-        config.mode,
-    );
+    let script = mgr.generate_hook_script("pre-push", &config.hooks["pre-push"].order, config.mode);
 
     assert!(script.contains("#!/bin/bash"));
     assert!(script.contains("[1/1] pre-push"));
@@ -37,11 +33,7 @@ order = ["flutter-test", "security"]
     let dir = tempfile::TempDir::new().unwrap();
     let mgr = HookManager::new(dir.path());
 
-    let script = mgr.generate_hook_script(
-        "pre-push",
-        &config.hooks["pre-push"].order,
-        config.mode,
-    );
+    let script = mgr.generate_hook_script("pre-push", &config.hooks["pre-push"].order, config.mode);
 
     assert!(script.contains("[1/2] pre-push"));
     assert!(script.contains("[2/2] pre-push"));
@@ -60,11 +52,7 @@ order = ["security"]
     let dir = tempfile::TempDir::new().unwrap();
     let mgr = HookManager::new(dir.path());
 
-    let script = mgr.generate_hook_script(
-        "pre-push",
-        &config.hooks["pre-push"].order,
-        config.mode,
-    );
+    let script = mgr.generate_hook_script("pre-push", &config.hooks["pre-push"].order, config.mode);
 
     assert!(script.contains("WARN_COUNT"));
     assert!(script.contains("warning mode"));
@@ -84,11 +72,7 @@ order = [
     let dir = tempfile::TempDir::new().unwrap();
     let mgr = HookManager::new(dir.path());
 
-    let script = mgr.generate_hook_script(
-        "pre-push",
-        &config.hooks["pre-push"].order,
-        config.mode,
-    );
+    let script = mgr.generate_hook_script("pre-push", &config.hooks["pre-push"].order, config.mode);
 
     // security is blocking -- should have exit
     assert!(script.contains("exit $EXIT_CODE"));

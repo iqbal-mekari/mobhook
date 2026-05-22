@@ -89,10 +89,15 @@ pub fn run() -> Result<()> {
 
     logger.line();
 
-    let total_installed = bundled.iter().filter(|n| installed_in_config.contains(**n)).count();
+    let total_installed = bundled
+        .iter()
+        .filter(|n| installed_in_config.contains(**n))
+        .count();
     logger.info(&format!(
         "Summary: {} of {} preset(s) installed, {} custom hook(s)",
-        total_installed, bundled.len(), custom_hooks.len(),
+        total_installed,
+        bundled.len(),
+        custom_hooks.len(),
     ));
 
     Ok(())

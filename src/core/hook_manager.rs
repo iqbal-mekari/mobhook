@@ -106,8 +106,7 @@ impl<'a> HookManager<'a> {
                 }
             }
 
-            let script =
-                self.generate_hook_script(hook_type, &hook_config.order, config.mode);
+            let script = self.generate_hook_script(hook_type, &hook_config.order, config.mode);
             let hook_file = hooks_dir.join(hook_type);
             fs::write(&hook_file, &script)?;
 
@@ -182,10 +181,7 @@ impl<'a> HookManager<'a> {
                 num, total, hook_type, entry.name,
             ));
             buf.push_str("set +e\n");
-            buf.push_str(&format!(
-                "\"$HOOK_DIR/{}/script.sh\" \"$@\"\n",
-                entry.name
-            ));
+            buf.push_str(&format!("\"$HOOK_DIR/{}/script.sh\" \"$@\"\n", entry.name));
             buf.push_str("EXIT_CODE=$?\n");
             buf.push_str("set -e\n");
             buf.push_str("if [ $EXIT_CODE -ne 0 ]; then\n");
@@ -244,8 +240,7 @@ impl<'a> HookManager<'a> {
                 continue;
             }
 
-            let backup_dir =
-                std::env::temp_dir().join(format!("mobhook_preserve_{}", name));
+            let backup_dir = std::env::temp_dir().join(format!("mobhook_preserve_{}", name));
             if backup_dir.exists() {
                 fs::remove_dir_all(&backup_dir).ok();
             }

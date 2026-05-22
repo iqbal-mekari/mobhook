@@ -1,5 +1,5 @@
-use mobhook::presets;
 use mobhook::core::preset::Preset;
+use mobhook::presets;
 
 #[test]
 fn test_builtin_preset_names() {

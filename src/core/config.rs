@@ -87,11 +87,9 @@ fn parse_hook_mode(s: &str) -> Option<HookMode> {
 impl MobhookConfig {
     /// Parse from a TOML string.
     pub fn parse(toml_str: &str) -> Result<Self> {
-        let raw: RawConfig = toml::from_str(toml_str)
-            .context("Failed to parse mobhook.toml")?;
+        let raw: RawConfig = toml::from_str(toml_str).context("Failed to parse mobhook.toml")?;
 
-        let mode = parse_hook_mode(&raw.mode)
-            .unwrap_or(HookMode::Blocking);
+        let mode = parse_hook_mode(&raw.mode).unwrap_or(HookMode::Blocking);
 
         let mut hooks = BTreeMap::new();
         for (hook_type, raw_hook) in raw.hooks {
@@ -103,7 +101,10 @@ impl MobhookConfig {
                     }
                     RawOrderEntry::Long { name, mode } => {
                         let entry_mode = mode.as_deref().and_then(parse_hook_mode);
-                        order.push(HookEntry { name, mode: entry_mode });
+                        order.push(HookEntry {
+                            name,
+                            mode: entry_mode,
+                        });
                     }
                 }
             }
@@ -170,6 +171,7 @@ order = []
 order = [
     { name = "security", mode = "blocking" },
 ]
-"#.to_string()
+"#
+        .to_string()
     }
 }

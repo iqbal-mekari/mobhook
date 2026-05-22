@@ -7,9 +7,14 @@ use std::path::{Path, PathBuf};
 /// How a tool should be installed.
 #[derive(Debug, Clone, PartialEq)]
 pub enum InstallMethod {
-    Download { repo: &'static str, binary_name: &'static str },
+    Download {
+        repo: &'static str,
+        binary_name: &'static str,
+    },
     Pipx,
-    System { hint: &'static str },
+    System {
+        hint: &'static str,
+    },
 }
 
 /// A tool required by a preset.
@@ -78,12 +83,20 @@ pub fn install_preset_with_overrides(
     }
 
     // Install remote-only files not in bundled set
-    let bundled_names: Vec<String> = preset.files().iter().map(|f| f.relative_path.clone()).collect();
+    let bundled_names: Vec<String> = preset
+        .files()
+        .iter()
+        .map(|f| f.relative_path.clone())
+        .collect();
     for (key, remote_path) in remote_files {
         let prefix = format!("{}/", preset.name());
         if let Some(filename) = key.strip_prefix(&prefix) {
-            if filename.contains('/') { continue; }
-            if bundled_names.contains(&filename.to_string()) { continue; }
+            if filename.contains('/') {
+                continue;
+            }
+            if bundled_names.contains(&filename.to_string()) {
+                continue;
+            }
 
             let file_path = dest.join(filename);
             fs::copy(remote_path, &file_path)?;

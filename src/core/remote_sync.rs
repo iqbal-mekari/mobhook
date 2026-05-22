@@ -36,7 +36,8 @@ impl<'a> RemoteSync<'a> {
 
         if cache_dir.exists() {
             if !self.is_stale(&cache_dir) {
-                self.logger.detail("Using cached remote rules (< 5 min old)");
+                self.logger
+                    .detail("Using cached remote rules (< 5 min old)");
             } else {
                 self.pull(&cache_dir, &remote.ref_)?;
             }
@@ -117,8 +118,7 @@ impl<'a> RemoteSync<'a> {
     fn pull(&self, dir: &Path, ref_: &str) -> Result<()> {
         self.logger.info("Updating remote rules...");
 
-        let repo =
-            git2::Repository::open(dir).context("Failed to open cached remote repo")?;
+        let repo = git2::Repository::open(dir).context("Failed to open cached remote repo")?;
 
         let mut remote = repo
             .find_remote("origin")
@@ -145,8 +145,8 @@ impl<'a> RemoteSync<'a> {
         self.logger
             .info(&format!("Downloading remote rules from {url}..."));
 
-        let response = reqwest::blocking::get(url)
-            .with_context(|| format!("Failed to download {url}"))?;
+        let response =
+            reqwest::blocking::get(url).with_context(|| format!("Failed to download {url}"))?;
 
         if !response.status().is_success() {
             anyhow::bail!("HTTP {} downloading {url}", response.status());

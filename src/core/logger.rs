@@ -7,11 +7,17 @@ pub struct Logger {
 
 impl Logger {
     pub fn new(verbose: bool) -> Self {
-        Self { verbose, quiet: false }
+        Self {
+            verbose,
+            quiet: false,
+        }
     }
 
     pub fn quiet() -> Self {
-        Self { verbose: false, quiet: true }
+        Self {
+            verbose: false,
+            quiet: true,
+        }
     }
 
     pub fn info(&self, msg: &str) {
@@ -51,7 +57,10 @@ impl Logger {
     pub fn header(&self, msg: &str) {
         if !self.quiet {
             println!("{}", msg.blue());
-            println!("{}", "═════════════════════════════════════════════════════════════".blue());
+            println!(
+                "{}",
+                "═════════════════════════════════════════════════════════════".blue()
+            );
             println!();
         }
     }

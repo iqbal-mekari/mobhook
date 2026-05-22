@@ -1,5 +1,5 @@
-use clap::{Parser, Subcommand};
 use anyhow::Result;
+use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(name = "mobhook", version, about = "Mobile-first git hooks manager")]
@@ -49,26 +49,16 @@ pub fn run() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Init { force, verbose, path } => {
-            crate::commands::init::run(force, verbose, path)
-        }
-        Commands::Update { verbose } => {
-            crate::commands::update::run(verbose)
-        }
-        Commands::Create { name } => {
-            crate::commands::create::run(&name)
-        }
-        Commands::Fetch { preset } => {
-            crate::commands::fetch::run(preset)
-        }
-        Commands::List => {
-            crate::commands::list::run()
-        }
-        Commands::Remove => {
-            crate::commands::remove::run()
-        }
-        Commands::Doctor => {
-            crate::commands::doctor::run()
-        }
+        Commands::Init {
+            force,
+            verbose,
+            path,
+        } => crate::commands::init::run(force, verbose, path),
+        Commands::Update { verbose } => crate::commands::update::run(verbose),
+        Commands::Create { name } => crate::commands::create::run(&name),
+        Commands::Fetch { preset } => crate::commands::fetch::run(preset),
+        Commands::List => crate::commands::list::run(),
+        Commands::Remove => crate::commands::remove::run(),
+        Commands::Doctor => crate::commands::doctor::run(),
     }
 }

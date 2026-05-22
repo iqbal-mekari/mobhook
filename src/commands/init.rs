@@ -12,7 +12,11 @@ use crate::presets;
 pub fn run(force: bool, verbose: bool, path: Option<String>) -> Result<()> {
     let logger = Logger::new(verbose);
     let project_root = path
-        .map(|p| PathBuf::from(&p).canonicalize().unwrap_or_else(|_| PathBuf::from(p)))
+        .map(|p| {
+            PathBuf::from(&p)
+                .canonicalize()
+                .unwrap_or_else(|_| PathBuf::from(p))
+        })
         .unwrap_or_else(|| std::env::current_dir().unwrap());
 
     let config_path = project_root.join("mobhook.toml");

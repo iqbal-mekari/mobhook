@@ -64,7 +64,9 @@ pub fn run(preset_name: Option<String>) -> Result<()> {
 
     let dest_dir = hooks_dir.join(&name);
     if dest_dir.exists() {
-        logger.warn(&format!("Preset \"{name}\" is already installed at .mobhook/{name}/"));
+        logger.warn(&format!(
+            "Preset \"{name}\" is already installed at .mobhook/{name}/"
+        ));
         logger.info("Run \"mobhook update\" to regenerate hooks if needed.");
         return Ok(());
     }
@@ -89,7 +91,9 @@ pub fn run(preset_name: Option<String>) -> Result<()> {
             "Preset \"{name}\" already in mobhook.toml -- run \"mobhook update\" to regenerate hooks."
         ));
     } else {
-        logger.info(&format!("Add \"{name}\" to mobhook.toml under the desired hook type:"));
+        logger.info(&format!(
+            "Add \"{name}\" to mobhook.toml under the desired hook type:"
+        ));
         logger.info("");
         logger.info("  hooks:");
         logger.info("    pre-push:");

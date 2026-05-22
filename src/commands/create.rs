@@ -46,8 +46,12 @@ pub fn run(name: &str) -> Result<()> {
     logger.success(&format!("Created .mobhook/{name}/script.sh"));
     logger.line();
     logger.info("Next steps:");
-    logger.info(&format!("  1. Edit .mobhook/{name}/script.sh with your logic"));
-    logger.info(&format!("  2. Add \"{name}\" to mobhook.toml under the hook type you want:"));
+    logger.info(&format!(
+        "  1. Edit .mobhook/{name}/script.sh with your logic"
+    ));
+    logger.info(&format!(
+        "  2. Add \"{name}\" to mobhook.toml under the hook type you want:"
+    ));
     logger.info("");
     logger.info("     hooks:");
     logger.info("       pre-commit:        # or pre-push, commit-msg, etc.");
@@ -59,7 +63,8 @@ pub fn run(name: &str) -> Result<()> {
 }
 
 fn template(name: &str) -> String {
-    format!(r#"#!/bin/bash
+    format!(
+        r#"#!/bin/bash
 # =============================================================================
 # {name} - Custom Hook
 # =============================================================================
@@ -95,5 +100,6 @@ echo -e "${{BLUE}}Running {name}...${{NC}}"
 
 echo -e "${{GREEN}} {name} passed${{NC}}"
 exit 0
-"#)
+"#
+    )
 }

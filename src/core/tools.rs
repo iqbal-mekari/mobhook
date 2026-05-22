@@ -47,11 +47,13 @@ pub fn ensure_gitleaks() -> Result<PathBuf> {
 
     // Get latest version tag from GitHub API
     let version_url = "https://api.github.com/repos/gitleaks/gitleaks/releases/latest";
-    let version_resp = reqwest::blocking::get(version_url)
-        .context("Failed to query gitleaks releases")?;
-    let release: serde_json::Value = version_resp.json()
+    let version_resp =
+        reqwest::blocking::get(version_url).context("Failed to query gitleaks releases")?;
+    let release: serde_json::Value = version_resp
+        .json()
         .context("Failed to parse gitleaks release info")?;
-    let tag = release["tag_name"].as_str()
+    let tag = release["tag_name"]
+        .as_str()
         .unwrap_or("v8.21.2")
         .trim_start_matches('v');
 
@@ -63,7 +65,10 @@ pub fn ensure_gitleaks() -> Result<PathBuf> {
         .with_context(|| format!("Failed to download gitleaks from {url}"))?;
 
     if !response.status().is_success() {
-        anyhow::bail!("Failed to download gitleaks: HTTP {} from {url}", response.status());
+        anyhow::bail!(
+            "Failed to download gitleaks: HTTP {} from {url}",
+            response.status()
+        );
     }
 
     let bytes = response.bytes()?;
@@ -92,9 +97,7 @@ pub fn ensure_mobsfscan() -> Result<PathBuf> {
     println!("⬇️  Installing mobsfscan via pipx...");
 
     if which("pipx").is_none() {
-        anyhow::bail!(
-            "pipx not found. Install it first:\n  brew install pipx\n  pipx ensurepath"
-        );
+        anyhow::bail!("pipx not found. Install it first:\n  brew install pipx\n  pipx ensurepath");
     }
 
     let python = find_compatible_python();
@@ -105,7 +108,8 @@ pub fn ensure_mobsfscan() -> Result<PathBuf> {
         cmd.arg("--python").arg(py);
     }
 
-    let status = cmd.status()
+    let status = cmd
+        .status()
         .context("Failed to run pipx install mobsfscan")?;
 
     if !status.success() {
