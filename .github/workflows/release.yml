@@ -60,3 +60,99 @@ jobs:
         with:
           files: "*/mobhook-*.tar.gz"
           generate_release_notes: true
+
+  update-homebrew:
+    needs: release
+    runs-on: ubuntu-latest
+    environment: PRODUCTION
+    steps:
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Download release assets and compute checksums
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh release download "$GITHUB_REF_NAME" \
+            -R "$GITHUB_REPOSITORY" \
+            -D /tmp/assets
+
+          ARM_MAC=$(shasum -a 256 /tmp/assets/mobhook-aarch64-apple-darwin.tar.gz | awk '{print $1}')
+          X64_MAC=$(shasum -a 256 /tmp/assets/mobhook-x86_64-apple-darwin.tar.gz | awk '{print $1}')
+          ARM_LINUX=$(shasum -a 256 /tmp/assets/mobhook-aarch64-unknown-linux-musl.tar.gz | awk '{print $1}')
+          X64_LINUX=$(shasum -a 256 /tmp/assets/mobhook-x86_64-unknown-linux-musl.tar.gz | awk '{print $1}')
+
+          echo "ARM_MAC=$ARM_MAC" >> "$GITHUB_OUTPUT"
+          echo "X64_MAC=$X64_MAC" >> "$GITHUB_OUTPUT"
+          echo "ARM_LINUX=$ARM_LINUX" >> "$GITHUB_OUTPUT"
+          echo "X64_LINUX=$X64_LINUX" >> "$GITHUB_OUTPUT"
+        id: checksums
+
+      - name: Checkout homebrew tap
+        uses: actions/checkout@v4
+        with:
+          repository: iqbal-mekari/homebrew-mobhook
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-mobhook
+
+      - name: Update formula
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          ARM_MAC: ${{ steps.checksums.outputs.ARM_MAC }}
+          X64_MAC: ${{ steps.checksums.outputs.X64_MAC }}
+          ARM_LINUX: ${{ steps.checksums.outputs.ARM_LINUX }}
+          X64_LINUX: ${{ steps.checksums.outputs.X64_LINUX }}
+        run: |
+          cat > homebrew-mobhook/Formula/mobhook.rb <<EOF
+          class Mobhook < Formula
+            desc "Mobile-first git hooks manager"
+            homepage "https://github.com/iqbal-mekari/mobhook"
+            version "${VERSION}"
+            license "MIT"
+
+            on_macos do
+              if Hardware::CPU.arm?
+                url "https://github.com/iqbal-mekari/mobhook/releases/download/v${VERSION}/mobhook-aarch64-apple-darwin.tar.gz"
+                sha256 "${ARM_MAC}"
+              else
+                url "https://github.com/iqbal-mekari/mobhook/releases/download/v${VERSION}/mobhook-x86_64-apple-darwin.tar.gz"
+                sha256 "${X64_MAC}"
+              end
+            end
+
+            on_linux do
+              if Hardware::CPU.arm?
+                url "https://github.com/iqbal-mekari/mobhook/releases/download/v${VERSION}/mobhook-aarch64-unknown-linux-musl.tar.gz"
+                sha256 "${ARM_LINUX}"
+              else
+                url "https://github.com/iqbal-mekari/mobhook/releases/download/v${VERSION}/mobhook-x86_64-unknown-linux-musl.tar.gz"
+                sha256 "${X64_LINUX}"
+              end
+            end
+
+            def install
+              bin.install "mobhook"
+            end
+
+            test do
+              assert_match "mobhook", shell_output("#{bin}/mobhook --version")
+            end
+          end
+          EOF
+
+      - name: Commit and push
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          cd homebrew-mobhook
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/mobhook.rb
+          if git diff --cached --quiet; then
+            echo "Formula already up to date, skipping."
+          else
+            git commit -m "Update mobhook to v${VERSION}"
+            git push
+          fi
