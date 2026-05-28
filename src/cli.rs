@@ -10,9 +10,9 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
-    /// Initialize mobhook: create mobhook.toml and set up .mobhook/
+    /// Initialize mobhook: create mobhook.yaml and set up .mobhook/
     Init {
-        /// Overwrite existing mobhook.toml
+        /// Overwrite existing mobhook.yaml
         #[arg(short, long)]
         force: bool,
         /// Show detailed output

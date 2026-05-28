@@ -12,10 +12,10 @@ pub fn run(verbose: bool) -> Result<()> {
     logger.header("mobhook update");
 
     let project_root = std::env::current_dir()?;
-    let config_path = project_root.join("mobhook.toml");
+    let config_path = project_root.join("mobhook.yaml");
 
     if !config_path.exists() {
-        logger.error("mobhook.toml not found. Run \"mobhook init\" first.");
+        logger.error("mobhook.yaml not found. Run \"mobhook init\" first.");
         process::exit(1);
     }
 
@@ -28,11 +28,11 @@ pub fn run(verbose: bool) -> Result<()> {
         logger.line();
     } else {
         logger.info("No remote configured -- skipping remote sync.");
-        logger.info("Add a remote.url to mobhook.toml to sync rules from a remote repo.");
+        logger.info("Add a remote.url to mobhook.yaml to sync rules from a remote repo.");
         logger.line();
     }
 
-    logger.info("Regenerating .mobhook/ from mobhook.toml...");
+    logger.info("Regenerating .mobhook/ from mobhook.yaml...");
     let mgr = HookManager::with_logger(&project_root, &logger);
     let builtin = presets::builtin_presets();
     mgr.run(&config, &builtin)?;

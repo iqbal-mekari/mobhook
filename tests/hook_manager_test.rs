@@ -5,12 +5,14 @@ use std::fs;
 
 #[test]
 fn test_generate_hook_script_single_step() {
-    let toml = r#"
-mode = "blocking"
-[hooks.pre-push]
-order = ["security"]
+    let yaml = r#"
+mode: blocking
+hooks:
+  pre-push:
+    order:
+      - security
 "#;
-    let config = MobhookConfig::parse(toml).unwrap();
+    let config = MobhookConfig::parse(yaml).unwrap();
     let dir = tempfile::TempDir::new().unwrap();
     let mgr = HookManager::new(dir.path());
 
@@ -24,12 +26,15 @@ order = ["security"]
 
 #[test]
 fn test_generate_hook_script_multiple_steps() {
-    let toml = r#"
-mode = "blocking"
-[hooks.pre-push]
-order = ["flutter-test", "security"]
+    let yaml = r#"
+mode: blocking
+hooks:
+  pre-push:
+    order:
+      - flutter-test
+      - security
 "#;
-    let config = MobhookConfig::parse(toml).unwrap();
+    let config = MobhookConfig::parse(yaml).unwrap();
     let dir = tempfile::TempDir::new().unwrap();
     let mgr = HookManager::new(dir.path());
 
@@ -43,12 +48,14 @@ order = ["flutter-test", "security"]
 
 #[test]
 fn test_generate_hook_script_warning_mode() {
-    let toml = r#"
-mode = "warning"
-[hooks.pre-push]
-order = ["security"]
+    let yaml = r#"
+mode: warning
+hooks:
+  pre-push:
+    order:
+      - security
 "#;
-    let config = MobhookConfig::parse(toml).unwrap();
+    let config = MobhookConfig::parse(yaml).unwrap();
     let dir = tempfile::TempDir::new().unwrap();
     let mgr = HookManager::new(dir.path());
 
@@ -60,15 +67,16 @@ order = ["security"]
 
 #[test]
 fn test_generate_hook_script_per_entry_override() {
-    let toml = r#"
-mode = "warning"
-[hooks.pre-push]
-order = [
-    { name = "security", mode = "blocking" },
-    "flutter-test",
-]
+    let yaml = r#"
+mode: warning
+hooks:
+  pre-push:
+    order:
+      - name: security
+        mode: blocking
+      - flutter-test
 "#;
-    let config = MobhookConfig::parse(toml).unwrap();
+    let config = MobhookConfig::parse(yaml).unwrap();
     let dir = tempfile::TempDir::new().unwrap();
     let mgr = HookManager::new(dir.path());
 

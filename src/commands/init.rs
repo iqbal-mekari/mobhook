@@ -19,21 +19,21 @@ pub fn run(force: bool, verbose: bool, path: Option<String>) -> Result<()> {
         })
         .unwrap_or_else(|| std::env::current_dir().unwrap());
 
-    let config_path = project_root.join("mobhook.toml");
+    let config_path = project_root.join("mobhook.yaml");
 
     logger.header("mobhook init");
 
     if config_path.exists() {
         if force {
-            fs::write(&config_path, MobhookConfig::default_toml())?;
-            logger.success("Recreated mobhook.toml (--force)");
+            fs::write(&config_path, MobhookConfig::default_yaml())?;
+            logger.success("Recreated mobhook.yaml (--force)");
         } else {
-            logger.info("mobhook.toml already exists -- using existing config.");
+            logger.info("mobhook.yaml already exists -- using existing config.");
             logger.info("Use --force to overwrite with defaults.");
         }
     } else {
-        fs::write(&config_path, MobhookConfig::default_toml())?;
-        logger.success("Created mobhook.toml");
+        fs::write(&config_path, MobhookConfig::default_yaml())?;
+        logger.success("Created mobhook.yaml");
     }
 
     logger.line();
@@ -61,7 +61,7 @@ pub fn run(force: bool, verbose: bool, path: Option<String>) -> Result<()> {
     logger.line();
     logger.success("mobhook initialized successfully!");
     logger.line();
-    logger.info("Edit mobhook.toml to configure hooks, then run:");
+    logger.info("Edit mobhook.yaml to configure hooks, then run:");
     logger.info("  mobhook update -- sync remote presets + regenerate .mobhook/");
     logger.info("  mobhook create -- scaffold a new custom hook template");
     logger.info("  mobhook remove -- fully remove mobhook from the project");

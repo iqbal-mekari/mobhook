@@ -12,7 +12,7 @@ pub enum HookMode {
     Warning,
 }
 
-/// Top-level mobhook.toml configuration.
+/// Top-level mobhook.yaml configuration.
 #[derive(Debug, Clone)]
 pub struct MobhookConfig {
     pub mode: HookMode,
@@ -85,9 +85,10 @@ fn parse_hook_mode(s: &str) -> Option<HookMode> {
 }
 
 impl MobhookConfig {
-    /// Parse from a TOML string.
-    pub fn parse(toml_str: &str) -> Result<Self> {
-        let raw: RawConfig = toml::from_str(toml_str).context("Failed to parse mobhook.toml")?;
+    /// Parse from a YAML string.
+    pub fn parse(yaml_str: &str) -> Result<Self> {
+        let raw: RawConfig =
+            serde_yaml::from_str(yaml_str).context("Failed to parse mobhook.yaml")?;
 
         let mode = parse_hook_mode(&raw.mode).unwrap_or(HookMode::Blocking);
 
@@ -133,9 +134,9 @@ impl MobhookConfig {
             .collect()
     }
 
-    /// Generate the default mobhook.toml template.
-    pub fn default_toml() -> String {
-        r#"# mobhook.toml - Git hooks configuration
+    /// Generate the default mobhook.yaml template.
+    pub fn default_yaml() -> String {
+        r#"# mobhook.yaml - Git hooks configuration
 # Docs: https://github.com/iqbal-mekari/mobhook
 #
 # Hooks directory: .mobhook/ (committed to git, shared with your team)
@@ -145,32 +146,31 @@ impl MobhookConfig {
 # - blocking: exit 1 and abort the git operation on any hook failure
 # - warning: print a warning but always exit 0 (non-blocking)
 # Per-entry mode can override this globally (see hooks section below).
-mode = "warning"
+mode: warning
 
 # Optional: sync preset rules from a remote git repo.
-# [remote]
-# url = "https://github.com/your-org/mobhook-rules.git"
-# ref = "main"
+# remote:
+#   url: https://github.com/your-org/mobhook-rules.git
+#   ref: main
 
 # Hook definitions - each key is a git hook type.
-# Order entries can be short-form (string, inherits global mode)
-# or long-form (inline table with per-entry mode override).
+# Short form (string, inherits global mode) or long form (mapping with per-entry mode).
+hooks:
+  pre-commit:
+    order: []
+    # Example long form:
+    # order:
+    #   - name: security
+    #     mode: warning
+    #   - custom-hook-script
 
-[hooks.pre-commit]
-order = []
-  # Example long form:
-  # order = [
-  #     { name = "security", mode = "warning" },
-  #     "custom-hook-script",
-  # ]
+  commit-msg:
+    order: []
 
-[hooks.commit-msg]
-order = []
-
-[hooks.pre-push]
-order = [
-    { name = "security", mode = "blocking" },
-]
+  pre-push:
+    order:
+      - name: security
+        mode: blocking
 "#
         .to_string()
     }

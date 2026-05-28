@@ -14,7 +14,7 @@ pub fn run() -> Result<()> {
 
     logger.header("mobhook list");
 
-    let config_path = project_root.join("mobhook.toml");
+    let config_path = project_root.join("mobhook.yaml");
     let config = if config_path.exists() {
         Some(MobhookConfig::load(&config_path)?)
     } else {

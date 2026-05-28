@@ -13,7 +13,7 @@ pub fn run(preset_name: Option<String>) -> Result<()> {
     let logger = Logger::new(false);
     let project_root = std::env::current_dir()?;
 
-    let config_path = project_root.join("mobhook.toml");
+    let config_path = project_root.join("mobhook.yaml");
     let config = if config_path.exists() {
         Some(MobhookConfig::load(&config_path)?)
     } else {
@@ -88,16 +88,17 @@ pub fn run(preset_name: Option<String>) -> Result<()> {
     logger.line();
     if already_in_config {
         logger.success(&format!(
-            "Preset \"{name}\" already in mobhook.toml -- run \"mobhook update\" to regenerate hooks."
+            "Preset \"{name}\" already in mobhook.yaml -- run \"mobhook update\" to regenerate hooks."
         ));
     } else {
         logger.info(&format!(
-            "Add \"{name}\" to mobhook.toml under the desired hook type:"
+            "Add \"{name}\" to mobhook.yaml under the desired hook type:"
         ));
         logger.info("");
         logger.info("  hooks:");
         logger.info("    pre-push:");
-        logger.info(&format!("      order = [\"{name}\"]"));
+        logger.info(&format!("      order:"));
+        logger.info(&format!("        - {name}"));
         logger.info("");
         logger.info("Then run \"mobhook update\" to regenerate hooks.");
     }

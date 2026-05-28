@@ -11,13 +11,13 @@ pub fn run() -> Result<()> {
     let project_root = std::env::current_dir()?;
     let mut issues = 0;
 
-    // Check mobhook.toml
+    // Check mobhook.yaml
     logger.info("Configuration:");
-    let config_path = project_root.join("mobhook.toml");
+    let config_path = project_root.join("mobhook.yaml");
     if config_path.exists() {
         match MobhookConfig::load(&config_path) {
             Ok(config) => {
-                logger.success("mobhook.toml is valid");
+                logger.success("mobhook.yaml is valid");
                 if config.remote.is_some() {
                     logger.success("Remote sync configured");
                 } else {
@@ -27,12 +27,12 @@ pub fn run() -> Result<()> {
                 logger.info(&format!("{hook_count} hook step(s) configured"));
             }
             Err(e) => {
-                logger.error(&format!("mobhook.toml has errors: {e}"));
+                logger.error(&format!("mobhook.yaml has errors: {e}"));
                 issues += 1;
             }
         }
     } else {
-        logger.warn("mobhook.toml not found -- run \"mobhook init\" first");
+        logger.warn("mobhook.yaml not found -- run \"mobhook init\" first");
         issues += 1;
     }
 

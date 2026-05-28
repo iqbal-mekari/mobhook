@@ -13,12 +13,12 @@ pub fn run() -> Result<()> {
 
     mgr.uninstall()?;
 
-    let config_file = project_root.join("mobhook.toml");
+    let config_file = project_root.join("mobhook.yaml");
     if config_file.exists() {
         fs::remove_file(&config_file)?;
-        logger.success("Deleted mobhook.toml");
+        logger.success("Deleted mobhook.yaml");
     } else {
-        logger.info("mobhook.toml not found -- already removed.");
+        logger.info("mobhook.yaml not found -- already removed.");
     }
 
     logger.line();
