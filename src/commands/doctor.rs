@@ -83,12 +83,20 @@ pub fn run() -> Result<()> {
 
     // Check tools
     logger.info("Required tools:");
-    for name in &["gitleaks", "mobsfscan", "flutter"] {
+    for name in &[
+        "gitleaks",
+        "mobsfscan",
+        "flutter",
+        "jq",
+        "jscpd",
+        "detekt",
+        "swiftlint",
+    ] {
         if tools::find_tool(name).is_some() {
             logger.success(&format!("{name}: available"));
         } else {
             logger.warn(&format!(
-                "{name}: not found (will be auto-installed on first use)"
+                "{name}: not found (gitleaks/mobsfscan auto-install on first use; see README for others)"
             ));
         }
     }

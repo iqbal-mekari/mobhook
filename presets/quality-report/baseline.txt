@@ -1,0 +1,14 @@
+# quality-report baseline (accepted issues)
+#
+# One fingerprint per line, matched against every finding:
+#   <tool>|<rule>|<file relative to project root>
+# '*' matches any characters. Lines starting with '#' and blank lines are ignored.
+# Line numbers are intentionally not part of the fingerprint so entries survive edits.
+#
+# Matching findings are removed from the open counts and shown under "Accepted issues".
+# Tools: dart-analyze, detekt, swiftlint, mobsfscan, gitleaks
+#
+# Examples:
+#   dart-analyze|unused_import|lib/legacy/old_service.dart
+#   detekt|detekt.style.MagicNumber|android/app/src/main/*
+#   mobsfscan|android_logging|*

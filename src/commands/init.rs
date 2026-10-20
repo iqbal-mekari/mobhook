@@ -79,6 +79,10 @@ fn check_required_tools(logger: &Logger) {
         ("gitleaks", "auto-downloaded on first use"),
         ("mobsfscan", "auto-installed via pipx on first use"),
         ("flutter", "https://flutter.dev/docs/get-started/install"),
+        ("jq", "brew install jq (quality-report)"),
+        ("jscpd", "npm install -g jscpd (quality-report)"),
+        ("detekt", "brew install detekt (quality-report, Android)"),
+        ("swiftlint", "brew install swiftlint (quality-report, iOS)"),
     ];
 
     for (name, hint) in tools_list {
