@@ -4,6 +4,9 @@ use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::path::Path;
 
+use super::net::validate_remote_url;
+use super::validate::{is_supported_hook_type, is_valid_hook_name, SUPPORTED_HOOK_TYPES};
+
 /// Hook execution mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -101,7 +104,15 @@ impl MobhookConfig {
                         order.push(HookEntry { name, mode: None });
                     }
                     RawOrderEntry::Long { name, mode } => {
-                        let entry_mode = mode.as_deref().and_then(parse_hook_mode);
+                        let entry_mode = match mode.as_deref() {
+                            None => None,
+                            Some(m) => Some(parse_hook_mode(m).with_context(|| {
+                                format!(
+                                    "Invalid mode {m:?} for step {name:?} under {hook_type:?}: \
+                                     use \"blocking\" or \"warning\""
+                                )
+                            })?),
+                        };
                         order.push(HookEntry {
                             name,
                             mode: entry_mode,
@@ -112,11 +123,40 @@ impl MobhookConfig {
             hooks.insert(hook_type, HookConfig { order });
         }
 
-        Ok(MobhookConfig {
+        let config = MobhookConfig {
             mode,
             remote: raw.remote,
             hooks,
-        })
+        };
+        config.validate()?;
+        Ok(config)
+    }
+
+    /// Reject anything that would be unsafe to turn into files or shell code:
+    /// unknown hook types, malformed step names and insecure remote URLs.
+    pub fn validate(&self) -> Result<()> {
+        for (hook_type, hook) in &self.hooks {
+            if !is_supported_hook_type(hook_type) {
+                anyhow::bail!(
+                    "Unsupported hook type {hook_type:?} in mobhook.yaml. Supported: {}",
+                    SUPPORTED_HOOK_TYPES.join(", ")
+                );
+            }
+            for entry in &hook.order {
+                if !is_valid_hook_name(&entry.name) {
+                    anyhow::bail!(
+                        "Invalid step name {:?} under '{hook_type}'. Use lowercase alphanumeric characters and hyphens only (e.g. lint-check, run-tests).",
+                        entry.name
+                    );
+                }
+            }
+        }
+
+        if let Some(remote) = &self.remote {
+            validate_remote_url(&remote.url).context("Invalid remote.url in mobhook.yaml")?;
+        }
+
+        Ok(())
     }
 
     /// Load from a file path.

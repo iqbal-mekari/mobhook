@@ -5,7 +5,6 @@ use std::path::PathBuf;
 use crate::core::config::MobhookConfig;
 use crate::core::hook_manager::HookManager;
 use crate::core::logger::Logger;
-use crate::core::remote_sync::RemoteSync;
 use crate::core::tools;
 use crate::presets;
 
@@ -44,11 +43,9 @@ pub fn run(force: bool, verbose: bool, path: Option<String>) -> Result<()> {
     mgr.setup()?;
     logger.line();
 
-    if let Some(ref remote) = config.remote {
-        logger.info("Syncing remote preset rules...");
-        let sync = RemoteSync::new(&logger);
-        sync.sync_and_get_files(remote)?;
-        logger.line();
+    // Remote rules are only consumed by `mobhook fetch`, which syncs on demand.
+    if config.remote.is_some() {
+        logger.detail("Remote rules will be synced by \"mobhook fetch\"");
     }
 
     logger.info("Generating .mobhook/ hooks...");
@@ -62,7 +59,7 @@ pub fn run(force: bool, verbose: bool, path: Option<String>) -> Result<()> {
     logger.success("mobhook initialized successfully!");
     logger.line();
     logger.info("Edit mobhook.yaml to configure hooks, then run:");
-    logger.info("  mobhook update -- sync remote presets + regenerate .mobhook/");
+    logger.info("  mobhook update -- regenerate .mobhook/ from mobhook.yaml");
     logger.info("  mobhook create -- scaffold a new custom hook template");
     logger.info("  mobhook remove -- fully remove mobhook from the project");
     logger.info("To skip hooks: git push --no-verify");

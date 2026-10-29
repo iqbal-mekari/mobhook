@@ -1,16 +1,15 @@
 use anyhow::Result;
-use regex::Regex;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::process;
 
 use crate::core::logger::Logger;
+use crate::core::validate::is_valid_hook_name;
 
 pub fn run(name: &str) -> Result<()> {
     let logger = Logger::new(false);
 
-    let valid_name = Regex::new(r"^[a-z0-9]([a-z0-9\-]*[a-z0-9])?$").unwrap();
-    if !valid_name.is_match(name) {
+    if !is_valid_hook_name(name) {
         logger.error(&format!(
             "Invalid hook name \"{name}\". Use lowercase alphanumeric characters and hyphens only (e.g. lint-check, run-tests)."
         ));

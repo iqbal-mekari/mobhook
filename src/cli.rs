@@ -21,7 +21,7 @@ pub enum Commands {
         /// Project root to initialize (defaults to current directory)
         path: Option<String>,
     },
-    /// Sync remote presets and regenerate .mobhook/
+    /// Regenerate .mobhook/ from mobhook.yaml
     Update {
         /// Show detailed output
         #[arg(short, long)]
