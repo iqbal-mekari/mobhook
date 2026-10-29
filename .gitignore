@@ -1,1 +1,16 @@
 /target
+
+# macOS
+.DS_Store
+
+# Secrets and credentials
+.env*
+*.pem
+*.key
+*.p12
+*.jks
+google-services.json
+GoogleService-Info.plist
+
+# Generated reports
+.hook-reports/
