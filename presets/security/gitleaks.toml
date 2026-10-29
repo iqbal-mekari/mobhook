@@ -7,6 +7,14 @@
 
 title = "mobhook Security Gitleaks Configuration"
 
+# Inherit gitleaks' built-in ruleset; the custom rules below add to / override it
+# (a local rule with the same id replaces the built-in one).
+[extend]
+useDefault = true
+
+# NOTE: `severity` on the rules below is informational only. gitleaks does not
+# read it and does not emit it in reports; nothing in mobhook depends on it.
+
 # ═══════════════════════════════════════════════════════════════════════════
 # CUSTOM RULES FOR MOBILE SECRET DETECTION
 # ═══════════════════════════════════════════════════════════════════════════
@@ -114,7 +122,7 @@ severity = "ERROR"
 [[rules]]
 id = "private-key"
 description = "Private Key"
-regex = '''-----BEGIN (?:RSA |DSA |EC |OPENSSH )?PRIVATE KEY-----'''
+regex = '''-----BEGIN (?:(?:RSA|DSA|EC|OPENSSH|ENCRYPTED|PGP) )?PRIVATE KEY(?: BLOCK)?-----'''
 keywords = ["-----BEGIN"]
 severity = "ERROR"
 
@@ -152,55 +160,50 @@ severity = "ERROR"
 # ═══════════════════════════════════════════════════════════════════════════
 
 [allowlist]
-description = "Allowlist for gitignored files and false positives"
+description = "Allowlist for generated/vendored paths and false positives"
+# Path regexes are anchored on a path-segment boundary: (^|/) so that e.g.
+# 'test/' does not also swallow 'contest/' or 'latest/'.
+# Credential-bearing files (.env, key.properties, keystore.properties,
+# service_account_key.json, google-services.json, GoogleService-Info.plist) are
+# deliberately NOT allowlisted: if a copy is tracked/present it must be flagged.
+# Keep them untracked via .gitignore.
 paths = [
     # Metadata/tool directories
-    '''.entire/''',
-    '''.mobhook-ci/''',
-    '''qa_tools/''',
-    '''TalentaTests/''',
-
-    # Gitignored credential files
-    '''google-services\.json$''',
-    '''GoogleService-Info\.plist$''',
-    '''key\.properties$''',
-    '''keystore\.properties$''',
-    '''\.env$''',
-    '''\.env\.''',
-    '''env\.properties$''',
-    '''service_account_key\.json$''',
+    '''(^|/)\.entire/''',
+    '''(^|/)\.mobhook-ci/''',
+    '''(^|/)qa_tools/''',
+    '''(^|/)TalentaTests/''',
 
     # Lock files
-    '''package-lock\.json$''',
-    '''yarn\.lock$''',
-    '''pubspec\.lock$''',
-    '''Podfile\.lock$''',
-    '''Gemfile\.lock$''',
-    '''Podfile\.lock$''',
+    '''(^|/)package-lock\.json$''',
+    '''(^|/)yarn\.lock$''',
+    '''(^|/)pubspec\.lock$''',
+    '''(^|/)Podfile\.lock$''',
+    '''(^|/)Gemfile\.lock$''',
     '''\.lock$''',
 
     # Build directories
-    '''\.git/''',
-    '''\.dart_tool/''',
-    '''build/''',
-    '''\.gradle/''',
-    '''node_modules/''',
-    '''Pods/''',
+    '''(^|/)\.git/''',
+    '''(^|/)\.dart_tool/''',
+    '''(^|/)build/''',
+    '''(^|/)\.gradle/''',
+    '''(^|/)node_modules/''',
+    '''(^|/)Pods/''',
 
     # Test directories
-    '''test/''',
-    '''test_driver/''',
-    '''integration_test/''',
+    '''(^|/)test/''',
+    '''(^|/)test_driver/''',
+    '''(^|/)integration_test/''',
     '''\.test\.dart$''',
     '''_test\.dart$''',
 
     # Sample/Example directories
     # NOTE: 'example/' is commented out by default for mobhook's own example directory
     # Uncomment for production use if you want to exclude example directories from scanning
-    '''samples/''',
-    # '''example/''',
-    '''examples/''',
-    '''sample/''',
+    '''(^|/)samples/''',
+    # '''(^|/)example/''',
+    '''(^|/)examples/''',
+    '''(^|/)sample/''',
 
     # Binary files
     '''\.apk$''',
@@ -224,14 +227,14 @@ paths = [
     '''\.xcarchive$''',
     '''\.framework$''',
 
-    # Example/template files
-    '''\.env\.example$''',
-    '''\.env\.sample$''',
+    # Example/template files (placeholders only; real .env files are NOT allowlisted)
+    '''(^|/)\.env\.example$''',
+    '''(^|/)\.env\.sample$''',
     '''\.md$''',
 
     # Scan reports (avoid self-detection)
-    '''.hook-reports/''',
-    '''gitleaks-report\.json$''',
-    '''mobsfscan-report\.json$''',
-    '''security-scan-report\.md$'''
+    '''(^|/)\.hook-reports/''',
+    '''(^|/)gitleaks-report\.json$''',
+    '''(^|/)mobsfscan-report\.json$''',
+    '''(^|/)security-scan-report\.md$'''
 ]
