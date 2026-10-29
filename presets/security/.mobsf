@@ -8,12 +8,15 @@ ignore-filenames:
   - "*.freezed.dart"
   - "*.gr.dart"
   - "*.mocks.dart"
-  - "google-services.json"
-  - "GoogleService-Info.plist"
-  - ".env*"
+  # Credential-bearing files (google-services.json, GoogleService-Info.plist,
+  # .env*) are deliberately NOT ignored here: a tracked copy must be scanned.
+  # Keep untracked ones out of the repo via .gitignore.
   - "strings.xml"    # Android resource files; DOCTYPE+ENTITY causes XML parse warnings; gitleaks handles secrets
 
 # Directories to skip
+# UNVERIFIED: whether mobsfscan matches ignore-paths as whole path segments or as
+# substrings could not be confirmed here; keep entries specific (e.g. avoid
+# short names like "test" if directories such as "contest" exist in your repo).
 ignore-paths:
   - test
   - test_driver

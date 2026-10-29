@@ -18,8 +18,26 @@
 #   .hook-reports/scan-summary.json       — machine-readable summary for Jenkins
 #
 # Required tools: gitleaks, mobsfscan, jq
+#
+# Optional environment:
+#   FAIL_ON_FINDINGS=1  Exit 1 when any check failed (TOTAL_FAILURES > 0).
+#                       Default (unset/0): always exit 0 for backward
+#                       compatibility with Jenkins consumers that read
+#                       scan-summary.json. scan-summary.json is written either way.
+#   SEMGREP_VERSION     Pin the pipx install of semgrep   (semgrep==X)
+#   MOBSFSCAN_VERSION   Pin the pipx install of mobsfscan (mobsfscan==X)
+#                       Exact versions are UNVERIFIED here; supply your own.
+#                       brew installs (gitleaks, jq, pipx) are not pinned.
+#
+# Secrets handling:
+#   - gitleaks always runs with --redact; raw Match/Secret values are never
+#     printed to CI logs.
+#   - Reports are created with umask 077 and chmod 600.
+#   - A gitleaks run that exits non-zero without a usable report counts as a
+#     failure (never reported as "No secrets found").
 # =============================================================================
 set -euo pipefail
+umask 077
 
 # ─── Environment Configuration ──────────────────────────────────────────────
 
@@ -38,36 +56,62 @@ REPORT_DIR="${SCAN_DIR}/.hook-reports"
 GITLEAKS_JSON="$REPORT_DIR/gitleaks-report.json"
 MOBSFSCAN_JSON="$REPORT_DIR/mobsfscan-report.json"
 mkdir -p "$REPORT_DIR"
+# Never trust a report left over from a previous run
+rm -f "$GITLEAKS_JSON"
 
 PROJECT_SLUG="${PROJECT_SLUG:-$(echo "$PROJECT_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | sed 's/-\+/-/g' | sed 's/^-//;s/-$//')}"
 
 # ─── Tool Check + Auto-Install ──────────────────────────────────────────────
 
+# Usage: require_tool <tool> <installer command and args...>
+# The installer is passed as separate arguments and executed directly (no
+# string evaluation).
 require_tool() {
     local tool="$1"
-    local install_cmd="$2"
+    shift
 
     if command -v "$tool" &>/dev/null; then
         return 0
     fi
 
     echo "[Install] $tool not found, installing..."
-    if eval "$install_cmd" 2>&1 && command -v "$tool" &>/dev/null; then
+    if "$@" 2>&1 && command -v "$tool" &>/dev/null; then
         echo "  ✅ $tool installed"
     else
-        echo "[FATAL] $tool installation failed. Install manually: $install_cmd"
+        echo "[FATAL] $tool installation failed. Install manually: $*"
         exit 1
     fi
 }
 
-require_tool gitleaks "brew install gitleaks"
-require_tool jq "brew install jq"
+# Prints "name" or "name==version" when a version pin is supplied.
+# Exact versions are UNVERIFIED: the caller supplies them via env vars.
+pin_spec() {
+    local name="$1"
+    local version="${2:-}"
+    if [ -z "$version" ]; then
+        echo "$name"
+        return 0
+    fi
+    case "$version" in
+        *[!A-Za-z0-9._+!-]*)
+            echo "[FATAL] invalid version string for $name" >&2
+            return 1
+            ;;
+    esac
+    echo "${name}==${version}"
+}
+
+SEMGREP_SPEC="$(pin_spec semgrep "${SEMGREP_VERSION:-}")"
+MOBSFSCAN_SPEC="$(pin_spec mobsfscan "${MOBSFSCAN_VERSION:-}")"
+
+require_tool gitleaks brew install gitleaks
+require_tool jq brew install jq
 
 # semgrep: required by mobsfscan for semantic pattern scanning
 # brew formula is 229MB and unreliable on CI; prefer pipx
 if ! command -v semgrep &>/dev/null; then
     echo "[Install] semgrep not found, installing via pipx..."
-    pipx install semgrep 2>&1
+    pipx install "$SEMGREP_SPEC" 2>&1 || echo "  pipx install failed"
     export PATH="$HOME/.local/bin:$PATH"
     if ! command -v semgrep &>/dev/null; then
         echo "  pipx failed, falling back to brew..."
@@ -131,7 +175,7 @@ if ! command -v mobsfscan &>/dev/null || ! mobsfscan --version &>/dev/null; then
     fi
 
     echo "[Install] Installing mobsfscan via pipx --python $PYTHON_BIN..."
-    pipx install mobsfscan --python "$PYTHON_BIN" 2>/dev/null || \
+    pipx install "$MOBSFSCAN_SPEC" --python "$PYTHON_BIN" 2>/dev/null || \
         pipx reinstall mobsfscan --python "$PYTHON_BIN"
     export PATH="$HOME/.local/bin:$PATH"
 
@@ -177,28 +221,27 @@ echo "[1/2] Gitleaks — Secret Detection..."
 GL_START=$(date +%s)
 
 GITLEAKS_EXIT=0
+# --redact: gitleaks masks Match/Secret in its stdout and JSON report
+GITLEAKS_ARGS=(detect --source "$SCAN_DIR" --no-git --redact \
+    --report-path "$GITLEAKS_JSON" --report-format json)
 if [ -f "$CONFIG_DIR/gitleaks.toml" ]; then
-    gitleaks detect --source "$SCAN_DIR" \
-        --config "$CONFIG_DIR/gitleaks.toml" \
-        --no-git \
-        --report-path "$GITLEAKS_JSON" \
-        --report-format json 2>&1 || GITLEAKS_EXIT=$?
-else
-    gitleaks detect --source "$SCAN_DIR" \
-        --no-git \
-        --report-path "$GITLEAKS_JSON" \
-        --report-format json 2>&1 || GITLEAKS_EXIT=$?
+    GITLEAKS_ARGS+=(--config "$CONFIG_DIR/gitleaks.toml")
 fi
+gitleaks "${GITLEAKS_ARGS[@]}" 2>&1 || GITLEAKS_EXIT=$?
 
 # Parse results
 GITLEAKS_SUMMARY="No findings."
-if [ -s "$GITLEAKS_JSON" ]; then
+GITLEAKS_REPORT_OK=false
+if [ -s "$GITLEAKS_JSON" ] && jq -e 'type == "array"' "$GITLEAKS_JSON" >/dev/null 2>&1; then
+    GITLEAKS_REPORT_OK=true
+fi
+if [ "$GITLEAKS_REPORT_OK" = true ]; then
     GITLEAKS_ISSUES=$(jq 'length' "$GITLEAKS_JSON" 2>/dev/null || echo "0")
     GITLEAKS_SEVERITY_SUMMARY=$(jq -r 'group_by(.Severity // "UNKNOWN") | map({key: .[0].Severity // "UNKNOWN", value: length}) | from_entries' "$GITLEAKS_JSON" 2>/dev/null || echo "{}")
     if [ "$GITLEAKS_ISSUES" -gt 0 ]; then
         GITLEAKS_SUMMARY=$(jq -r '[.[] | "• \(.RuleID) — \(.File | split("/") | .[-1]):\(.StartLine)"] | .[0:5] | join("\n")' "$GITLEAKS_JSON" 2>/dev/null || echo "See full report.")
         if [ "$GITLEAKS_ISSUES" -gt 5 ]; then
-            GITLEAKS_SUMMARY="${GITLEAKS_SUMMARY}\n... and $((GITLEAKS_ISSUES - 5)) more"
+            GITLEAKS_SUMMARY="${GITLEAKS_SUMMARY}"$'\n'"... and $((GITLEAKS_ISSUES - 5)) more"
         fi
     fi
 fi
@@ -208,14 +251,20 @@ if [ "$GITLEAKS_ISSUES" -gt 0 ]; then
     TOTAL_FAILURES=$((TOTAL_FAILURES + 1))
     echo ""
     echo "  ┌─ Findings ─────────────────────────────────────────────────────────"
+    # Secret values are never printed: rule id, file, line and a masked marker only
     jq -r '
         to_entries | map(.value + {_index: (.key + 1)}) | .[] |
         "  │ [\(._index)] \(.RuleID)",
         "  │     File  : \(.File):\(.StartLine)",
-        "  │     Match : \(.Match | if length > 80 then .[0:80] + "…" else . end)",
+        "  │     Match : [REDACTED]",
         "  │"
     ' "$GITLEAKS_JSON" 2>/dev/null || true
     echo "  └────────────────────────────────────────────────────────────────────"
+elif [ "$GITLEAKS_EXIT" -ne 0 ] || [ "$GITLEAKS_REPORT_OK" != true ]; then
+    # Fail closed: a crashed scanner / missing report must not read as "clean"
+    echo "  ❌ gitleaks failed (exit code $GITLEAKS_EXIT) without a usable findings report — treated as failure"
+    GITLEAKS_SUMMARY="gitleaks failed (exit code $GITLEAKS_EXIT) without a usable report."
+    TOTAL_FAILURES=$((TOTAL_FAILURES + 1))
 else
     echo "  ✅ No secrets found"
 fi
@@ -272,7 +321,7 @@ if [ -s "$MOBSFSCAN_JSON" ]; then
             | .[0:5] | join("\n")
         else "See full report." end' "$MOBSFSCAN_JSON" 2>/dev/null || echo "See full report.")
         if [ "$MOBSFSCAN_ISSUES" -gt 5 ]; then
-            MOBSFSCAN_SUMMARY="${MOBSFSCAN_SUMMARY}\n... and $((MOBSFSCAN_ISSUES - 5)) more"
+            MOBSFSCAN_SUMMARY="${MOBSFSCAN_SUMMARY}"$'\n'"... and $((MOBSFSCAN_ISSUES - 5)) more"
         fi
     fi
 fi
@@ -292,7 +341,7 @@ if [ "$MOBSFSCAN_ISSUES" -gt 0 ]; then
             ] | to_entries | .[] | .value as $f | .key as $i |
             "  │ [\($i + 1)] [\($f.sev)] \($f.rule)",
             "  │     File  : \($f.file):\($f.line)",
-            (if $f.match != "" then "  │     Match : \($f.match | if length > 80 then .[0:80] + "…" else . end)" else empty end),
+            (if $f.match != "" then "  │     Match : [REDACTED]" else empty end),
             (if $f.cwe != "" then "  │     CWE   : \($f.cwe)" else empty end),
             "  │"
         else empty end
@@ -311,11 +360,8 @@ echo ""
 TOTAL_ISSUES=$((GITLEAKS_ISSUES + MOBSFSCAN_ISSUES))
 if [ "$TOTAL_FAILURES" -gt 0 ]; then
     HAS_CRITICAL=$(echo "$GITLEAKS_SEVERITY_SUMMARY $MOBSFSCAN_SEVERITY_SUMMARY" | jq -r 'if has("ERROR") or has("CRITICAL") or has("HIGH") then "yes" else "no" end' 2>/dev/null || echo "no")
-    HAS_WARNING=$(echo "$GITLEAKS_SEVERITY_SUMMARY $MOBSFSCAN_SEVERITY_SUMMARY" | jq -r 'if has("WARNING") or has("MEDIUM") then "yes" else "no" end' 2>/dev/null || echo "no")
     if [ "$HAS_CRITICAL" = "yes" ]; then
         OVERALL_SEVERITY="critical"
-    elif [ "$HAS_WARNING" = "yes" ]; then
-        OVERALL_SEVERITY="high"
     else
         OVERALL_SEVERITY="high"
     fi
@@ -379,6 +425,9 @@ jq -n \
         timestamp: $timestamp
     }' > "$SUMMARY_JSON"
 
+# Reports describe where secrets live: owner-only
+chmod 600 "$GITLEAKS_JSON" "$MOBSFSCAN_JSON" "$MOBSFSCAN_STDERR" "$SUMMARY_JSON" 2>/dev/null || true
+
 echo ""
 echo "📄 Reports:"
 echo "   ├── .hook-reports/gitleaks-report.json"
@@ -387,6 +436,15 @@ echo "   └── .hook-reports/scan-summary.json"
 echo ""
 
 # ─── Exit ───────────────────────────────────────────────────────────────────
-# Always exit 0 — the scan itself succeeded regardless of findings.
-# The notification and scan-summary.json communicate pass/fail status.
+# Default: exit 0 — the scan itself succeeded regardless of findings; the
+# notification and scan-summary.json communicate pass/fail status.
+# Opt-in: FAIL_ON_FINDINGS=1 makes any failed check a non-zero exit.
+case "${FAIL_ON_FINDINGS:-0}" in
+    1|true|TRUE|yes|YES)
+        if [ "$TOTAL_FAILURES" -gt 0 ]; then
+            echo "FAIL_ON_FINDINGS is set: exiting 1 ($TOTAL_FAILURES check(s) failed)"
+            exit 1
+        fi
+        ;;
+esac
 exit 0
