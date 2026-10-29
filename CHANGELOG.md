@@ -7,7 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-29
+
+### Changed (breaking)
+- Configs that previously loaded are now rejected: unknown `hooks:` keys (only the 18
+  standard client-side git hook names are accepted), step names that are not
+  `[a-z0-9-]` (lowercase, no leading/trailing hyphen), an invalid per-entry `mode`,
+  remotes that are not `https://`, `ssh://` or `user@host:path`, and URLs with embedded
+  credentials. Run `mobhook update` afterwards to regenerate hooks.
+- `init`, `update` and `list` no longer contact the remote; only `fetch` syncs it.
+- Generated hook scripts are quoted differently and honour `MOBHOOK=0`; run
+  `mobhook update` to regenerate them.
+- The security preset scripts now block on a gitleaks crash, an unusable report or a
+  mobsfscan failure, require `jq`, and write reports with mode 600. Tracked `.env`,
+  `google-services.json` and similar files now produce findings.
+- Bare-number tags (e.g. `0.1.0`) no longer start a release.
+
 ### Security
+- Hook keys and step names are validated and single-quoted in generated scripts,
+  preventing path traversal and shell injection from `mobhook.yaml`.
+- Remote presets: https/ssh only, credentials in URLs rejected and redacted in logs,
+  symlinks skipped, download and extraction size caps, no fallback to a shared `/tmp`.
+  `remote.ref` may be pinned to a commit SHA (a mutable ref only warns).
+- The gitleaks auto-install is pinned and verified by SHA-256; custom hooks are backed
+  up to a private temp directory.
+- The security preset secret gate no longer fails open (gitleaks' own exit code is used),
+  temp files use `mktemp` with trap cleanup, `--redact` is on, and raw secret values are
+  no longer printed. `FAIL_ON_FINDINGS=1` makes the CI scan exit non-zero.
+- Prerelease tags (e.g. `v0.5.0-rc.1`) publish a GitHub prerelease and no longer update
+  the Homebrew formula.
 - Release workflow now triggers only on strict `vMAJOR.MINOR.PATCH[-prerelease]` tags;
   bare-number tags (e.g. `0.1.0`) no longer start a release.
 - New `verify` job runs first: validates the tag (strict SemVer), checks it equals the
@@ -65,7 +93,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Use rustls-tls (no OpenSSL) and fix clippy warnings.
 - Add `vendored-openssl` to git2 for cross-platform builds.
 
-[Unreleased]: https://github.com/iqbal-mekari/mobhook/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/iqbal-mekari/mobhook/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/iqbal-mekari/mobhook/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/iqbal-mekari/mobhook/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/iqbal-mekari/mobhook/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/iqbal-mekari/mobhook/compare/v0.1.0...v0.1.1
