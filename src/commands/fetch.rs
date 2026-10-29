@@ -24,7 +24,12 @@ pub fn run(preset_name: Option<String>) -> Result<()> {
         if let Some(ref remote) = cfg.remote {
             let quiet_logger = Logger::quiet();
             let sync = RemoteSync::new(&quiet_logger);
-            sync.sync_and_get_files(remote).unwrap_or_default()
+            sync.sync_and_get_files(remote).unwrap_or_else(|e| {
+                logger.warn(&format!(
+                    "Remote sync failed, using bundled preset files: {e:#}"
+                ));
+                HashMap::new()
+            })
         } else {
             HashMap::new()
         }
@@ -97,7 +102,7 @@ pub fn run(preset_name: Option<String>) -> Result<()> {
         logger.info("");
         logger.info("  hooks:");
         logger.info("    pre-push:");
-        logger.info(&format!("      order:"));
+        logger.info("      order:");
         logger.info(&format!("        - {name}"));
         logger.info("");
         logger.info("Then run \"mobhook update\" to regenerate hooks.");

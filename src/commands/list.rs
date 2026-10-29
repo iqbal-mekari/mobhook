@@ -1,11 +1,8 @@
 use anyhow::Result;
-use std::collections::HashMap;
 use std::fs;
-use std::path::PathBuf;
 
 use crate::core::config::MobhookConfig;
 use crate::core::logger::Logger;
-use crate::core::remote_sync::RemoteSync;
 use crate::presets;
 
 pub fn run() -> Result<()> {
@@ -20,20 +17,6 @@ pub fn run() -> Result<()> {
     } else {
         None
     };
-
-    let remote_files: HashMap<String, PathBuf> = if let Some(ref cfg) = config {
-        if let Some(ref remote) = cfg.remote {
-            let quiet_logger = Logger::quiet();
-            let sync = RemoteSync::new(&quiet_logger);
-            sync.sync_and_get_files(remote).unwrap_or_default()
-        } else {
-            HashMap::new()
-        }
-    } else {
-        HashMap::new()
-    };
-
-    let _ = remote_files; // used for future remote preset discovery
 
     let bundled = presets::builtin_preset_names();
     let installed_in_config = config

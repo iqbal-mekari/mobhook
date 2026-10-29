@@ -1,8 +1,10 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use std::collections::HashMap;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
+
+use super::validate::ensure_path_component;
 
 /// How a tool should be installed.
 #[derive(Debug, Clone, PartialEq)]
@@ -70,7 +72,7 @@ pub fn install_preset_with_overrides(
         let file_path = dest.join(&file.relative_path);
 
         if let Some(remote_path) = remote_files.get(&remote_key) {
-            fs::copy(remote_path, &file_path)?;
+            copy_remote_file(remote_path, &file_path)?;
         } else {
             fs::write(&file_path, file.content)?;
         }
@@ -97,9 +99,10 @@ pub fn install_preset_with_overrides(
             if bundled_names.contains(&filename.to_string()) {
                 continue;
             }
+            ensure_path_component("remote preset file", filename)?;
 
             let file_path = dest.join(filename);
-            fs::copy(remote_path, &file_path)?;
+            copy_remote_file(remote_path, &file_path)?;
             if filename.ends_with(".sh") {
                 let mut perms = fs::metadata(&file_path)?.permissions();
                 perms.set_mode(0o755);
@@ -109,4 +112,19 @@ pub fn install_preset_with_overrides(
     }
 
     Ok(dest)
+}
+
+/// Copy a synced remote file. Anything but a regular file (e.g. a symlink to a
+/// local secret) is refused so it can never end up in the committed .mobhook/.
+fn copy_remote_file(src: &Path, dst: &Path) -> Result<()> {
+    let meta = fs::symlink_metadata(src)
+        .with_context(|| format!("Failed to read remote file {}", src.display()))?;
+    if !meta.file_type().is_file() {
+        anyhow::bail!(
+            "Refusing to install remote file {}: not a regular file",
+            src.display()
+        );
+    }
+    fs::copy(src, dst).with_context(|| format!("Failed to copy {}", src.display()))?;
+    Ok(())
 }

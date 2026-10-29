@@ -1,3 +1,6 @@
+// Shared by several test crates; not every crate uses every helper.
+#![allow(dead_code)]
+
 use std::path::PathBuf;
 use tempfile::TempDir;
 

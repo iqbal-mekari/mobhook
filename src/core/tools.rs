@@ -1,21 +1,66 @@
 use anyhow::{Context, Result};
+use sha2::{Digest, Sha256};
 use std::fs;
+use std::io::{Read, Write};
 use std::os::unix::fs::PermissionsExt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use super::net;
+
+/// gitleaks release installed when it is not already on PATH. Bump together
+/// with GITLEAKS_SHA256, copied from the publisher's
+/// gitleaks_<version>_checksums.txt on the GitHub release.
+const GITLEAKS_VERSION: &str = "8.21.2";
+
+/// SHA-256 of each supported release asset (gitleaks_8.21.2_checksums.txt).
+const GITLEAKS_SHA256: &[(&str, &str)] = &[
+    (
+        "darwin_arm64",
+        "cad3de5dc9a4d5447d967a70a4d49499c557f04db028274cc324f9ff983f6502",
+    ),
+    (
+        "darwin_x64",
+        "5b42c6e4b1fd693eaeb2b5b7faa5f17a1434299d4deb2de63d4b2efd7c753128",
+    ),
+    (
+        "linux_arm64",
+        "654c935542c89f565aabe7bf7c6c500830f116c114f0aeb509d2460c1ac2e6da",
+    ),
+    (
+        "linux_x64",
+        "5bc41815076e6ed6ef8fbecc9d9b75bcae31f39029ceb55da08086315316e3ba",
+    ),
+];
+
+const MAX_GITLEAKS_ARCHIVE_BYTES: u64 = 50 * 1024 * 1024;
+const MAX_GITLEAKS_BINARY_BYTES: u64 = 100 * 1024 * 1024;
+
+/// Pinned mobsfscan release installed via pipx (PyPI).
+const MOBSFSCAN_SPEC: &str = "mobsfscan==1.0.1";
+
+/// ~/.mobhook for the given home dir. Without a home dir we fail closed rather
+/// than fall back to a shared, world-writable location such as /tmp.
+pub fn mobhook_home_from(home: Option<PathBuf>) -> Result<PathBuf> {
+    let home = home.context(
+        "Cannot determine your home directory (set $HOME); refusing to fall back to a shared temp dir",
+    )?;
+    Ok(home.join(".mobhook"))
+}
+
 /// Get the mobhook bin directory for cached tool binaries.
-pub fn mobhook_bin_dir() -> PathBuf {
-    let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/tmp"));
-    home.join(".mobhook").join("bin")
+pub fn mobhook_bin_dir() -> Result<PathBuf> {
+    Ok(mobhook_home_from(dirs::home_dir())?.join("bin"))
 }
 
 /// Check if a tool is available on PATH or in ~/.mobhook/bin/.
 pub fn find_tool(name: &str) -> Option<PathBuf> {
     // Check ~/.mobhook/bin/ first
-    let cached = mobhook_bin_dir().join(name);
-    if cached.exists() {
-        return Some(cached);
+    if let Ok(bin_dir) = mobhook_bin_dir() {
+        let cached = bin_dir.join(name);
+        if cached.exists() {
+            return Some(cached);
+        }
     }
     // Check system PATH
     which(name)
@@ -31,7 +76,7 @@ fn which(name: &str) -> Option<PathBuf> {
         .map(|o| PathBuf::from(String::from_utf8_lossy(&o.stdout).trim()))
 }
 
-/// Download gitleaks binary from GitHub releases.
+/// Download the pinned gitleaks release from GitHub and verify its checksum.
 pub fn ensure_gitleaks() -> Result<PathBuf> {
     if let Some(path) = find_tool("gitleaks") {
         return Ok(path);
@@ -39,53 +84,83 @@ pub fn ensure_gitleaks() -> Result<PathBuf> {
 
     println!("⬇️  Downloading gitleaks...");
 
-    let bin_dir = mobhook_bin_dir();
+    let bin_dir = mobhook_bin_dir()?;
     fs::create_dir_all(&bin_dir)?;
 
     let (os, arch) = platform_triple();
-    let ext = if os == "windows" { ".zip" } else { ".tar.gz" };
-
-    // Get latest version tag from GitHub API
-    let version_url = "https://api.github.com/repos/gitleaks/gitleaks/releases/latest";
-    let version_resp =
-        reqwest::blocking::get(version_url).context("Failed to query gitleaks releases")?;
-    let release: serde_json::Value = version_resp
-        .json()
-        .context("Failed to parse gitleaks release info")?;
-    let tag = release["tag_name"]
-        .as_str()
-        .unwrap_or("v8.21.2")
-        .trim_start_matches('v');
+    let platform = format!("{os}_{arch}");
+    let expected = gitleaks_sha256(&platform)?;
 
     let url = format!(
-        "https://github.com/gitleaks/gitleaks/releases/download/v{tag}/gitleaks_{tag}_{os}_{arch}{ext}"
+        "https://github.com/gitleaks/gitleaks/releases/download/v{GITLEAKS_VERSION}/gitleaks_{GITLEAKS_VERSION}_{platform}.tar.gz"
     );
 
-    let response = reqwest::blocking::get(&url)
-        .with_context(|| format!("Failed to download gitleaks from {url}"))?;
+    let bytes = net::download_capped(&url, MAX_GITLEAKS_ARCHIVE_BYTES)?;
+    verify_sha256(&bytes, expected).with_context(|| {
+        format!(
+            "Refusing to install gitleaks from {}",
+            net::redact_url(&url)
+        )
+    })?;
 
-    if !response.status().is_success() {
-        anyhow::bail!(
-            "Failed to download gitleaks: HTTP {} from {url}",
-            response.status()
-        );
+    let binary = extract_file_from_tar_gz(&bytes[..], "gitleaks", MAX_GITLEAKS_BINARY_BYTES)?;
+    let gitleaks_path = install_binary(&bin_dir, "gitleaks", &binary)?;
+    println!("✅ gitleaks installed to {}", gitleaks_path.display());
+    Ok(gitleaks_path)
+}
+
+/// Pinned checksum for a platform's release asset; unknown platforms fail closed.
+fn gitleaks_sha256(platform: &str) -> Result<&'static str> {
+    GITLEAKS_SHA256
+        .iter()
+        .find(|(p, _)| *p == platform)
+        .map(|(_, sha)| *sha)
+        .with_context(|| {
+            format!(
+                "No verified gitleaks {GITLEAKS_VERSION} checksum for platform '{platform}' (unverified); install gitleaks manually"
+            )
+        })
+}
+
+fn verify_sha256(bytes: &[u8], expected_hex: &str) -> Result<()> {
+    let actual = format!("{:x}", Sha256::digest(bytes));
+    if !actual.eq_ignore_ascii_case(expected_hex) {
+        anyhow::bail!("SHA-256 mismatch: expected {expected_hex}, got {actual}");
     }
+    Ok(())
+}
 
-    let bytes = response.bytes()?;
-    let decoder = flate2::read::GzDecoder::new(&bytes[..]);
-    let mut archive = tar::Archive::new(decoder);
-    archive.unpack(&bin_dir)?;
-
-    let gitleaks_path = bin_dir.join("gitleaks");
-    if gitleaks_path.exists() {
-        let mut perms = fs::metadata(&gitleaks_path)?.permissions();
-        perms.set_mode(0o755);
-        fs::set_permissions(&gitleaks_path, perms)?;
-        println!("✅ gitleaks installed to {}", gitleaks_path.display());
-        Ok(gitleaks_path)
-    } else {
-        anyhow::bail!("gitleaks binary not found after download")
+/// Read a single regular file named exactly `name` from a .tar.gz, ignoring every
+/// other entry (docs, links, anything with a path).
+fn extract_file_from_tar_gz<R: Read>(reader: R, name: &str, max_bytes: u64) -> Result<Vec<u8>> {
+    let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(reader));
+    for entry in archive.entries()? {
+        let entry = entry?;
+        if !entry.header().entry_type().is_file() || entry.path()?.as_ref() != Path::new(name) {
+            continue;
+        }
+        let size = entry.header().size()?;
+        if size > max_bytes {
+            anyhow::bail!("'{name}' in archive is too large: {size} bytes (limit {max_bytes})");
+        }
+        let mut buf = Vec::new();
+        entry.take(max_bytes).read_to_end(&mut buf)?;
+        return Ok(buf);
     }
+    anyhow::bail!("'{name}' not found in archive")
+}
+
+/// Write `data` to `dir/name` as an executable, atomically (temp file + rename).
+fn install_binary(dir: &Path, name: &str, data: &[u8]) -> Result<PathBuf> {
+    let mut tmp = tempfile::NamedTempFile::new_in(dir)
+        .with_context(|| format!("Failed to create temp file in {}", dir.display()))?;
+    tmp.write_all(data)?;
+    tmp.as_file()
+        .set_permissions(fs::Permissions::from_mode(0o755))?;
+    let dest = dir.join(name);
+    tmp.persist(&dest)
+        .with_context(|| format!("Failed to install {}", dest.display()))?;
+    Ok(dest)
 }
 
 /// Ensure mobsfscan is installed via pipx.
@@ -103,7 +178,7 @@ pub fn ensure_mobsfscan() -> Result<PathBuf> {
     let python = find_compatible_python();
 
     let mut cmd = Command::new("pipx");
-    cmd.arg("install").arg("mobsfscan");
+    cmd.arg("install").arg(MOBSFSCAN_SPEC);
     if let Some(py) = &python {
         cmd.arg("--python").arg(py);
     }
@@ -116,19 +191,14 @@ pub fn ensure_mobsfscan() -> Result<PathBuf> {
         anyhow::bail!("pipx install mobsfscan failed");
     }
 
-    let local_bin = dirs::home_dir()
-        .unwrap_or_else(|| PathBuf::from("/tmp"))
-        .join(".local")
-        .join("bin")
-        .join("mobsfscan");
+    let local_bin = dirs::home_dir().map(|home| home.join(".local").join("bin").join("mobsfscan"));
 
-    if local_bin.exists() {
-        println!("✅ mobsfscan installed");
-        Ok(local_bin)
-    } else if let Some(path) = which("mobsfscan") {
-        Ok(path)
-    } else {
-        anyhow::bail!("mobsfscan not found after pipx install")
+    match local_bin {
+        Some(path) if path.exists() => {
+            println!("✅ mobsfscan installed");
+            Ok(path)
+        }
+        _ => which("mobsfscan").context("mobsfscan not found after pipx install"),
     }
 }
 
@@ -160,4 +230,111 @@ fn platform_triple() -> (&'static str, &'static str) {
     };
 
     (os, arch)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    fn tar_gz(entries: &[(&str, tar::EntryType, &[u8])]) -> Vec<u8> {
+        let mut builder = tar::Builder::new(Vec::new());
+        for (path, kind, data) in entries {
+            let mut header = tar::Header::new_gnu();
+            header.set_entry_type(*kind);
+            header.set_mode(0o755);
+            if *kind == tar::EntryType::Symlink {
+                header.set_size(0);
+                builder.append_link(&mut header, path, "/bin/sh").unwrap();
+            } else {
+                header.set_size(data.len() as u64);
+                header.set_cksum();
+                builder.append_data(&mut header, path, *data).unwrap();
+            }
+        }
+        let tar_bytes = builder.into_inner().unwrap();
+        let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+        gz.write_all(&tar_bytes).unwrap();
+        gz.finish().unwrap()
+    }
+
+    #[test]
+    fn checksum_table_is_well_formed() {
+        for (platform, sha) in GITLEAKS_SHA256 {
+            assert_eq!(sha.len(), 64, "{platform}");
+            assert!(sha.bytes().all(|b| b.is_ascii_hexdigit()), "{platform}");
+        }
+        let (os, arch) = platform_triple();
+        if os != "windows" {
+            assert!(gitleaks_sha256(&format!("{os}_{arch}")).is_ok());
+        }
+    }
+
+    #[test]
+    fn unknown_platform_fails_closed() {
+        let err = gitleaks_sha256("windows_x64").unwrap_err().to_string();
+        assert!(err.contains("unverified"), "{err}");
+    }
+
+    #[test]
+    fn verify_sha256_accepts_match_rejects_mismatch() {
+        // SHA-256("abc"), FIPS 180-2 test vector.
+        let abc = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+        assert!(verify_sha256(b"abc", abc).is_ok());
+        assert!(verify_sha256(b"abc", &abc.to_uppercase()).is_ok());
+        let err = verify_sha256(b"abd", abc).unwrap_err().to_string();
+        assert!(err.contains("mismatch"), "{err}");
+    }
+
+    #[test]
+    fn extracts_only_the_named_binary() {
+        let archive = tar_gz(&[
+            ("README.md", tar::EntryType::Regular, b"docs"),
+            ("sub/gitleaks", tar::EntryType::Regular, b"wrong"),
+            ("gitleaks", tar::EntryType::Regular, b"\x7fELF-binary"),
+        ]);
+        let data = extract_file_from_tar_gz(&archive[..], "gitleaks", 1024).unwrap();
+        assert_eq!(data, b"\x7fELF-binary");
+    }
+
+    #[test]
+    fn extract_ignores_symlink_named_like_binary() {
+        let archive = tar_gz(&[("gitleaks", tar::EntryType::Symlink, b"")]);
+        let err = extract_file_from_tar_gz(&archive[..], "gitleaks", 1024).unwrap_err();
+        assert!(err.to_string().contains("not found"));
+    }
+
+    #[test]
+    fn extract_rejects_oversized_binary() {
+        let archive = tar_gz(&[("gitleaks", tar::EntryType::Regular, &[0u8; 2048])]);
+        let err = extract_file_from_tar_gz(&archive[..], "gitleaks", 1024).unwrap_err();
+        assert!(err.to_string().contains("too large"));
+    }
+
+    #[test]
+    fn install_binary_is_executable() {
+        let tmp = TempDir::new().unwrap();
+        let path = install_binary(tmp.path(), "gitleaks", b"#!/bin/sh\n").unwrap();
+        assert_eq!(path, tmp.path().join("gitleaks"));
+        let mode = fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o755);
+        // Only the binary is left behind, no stray temp files.
+        assert_eq!(fs::read_dir(tmp.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn no_home_dir_fails_closed() {
+        let err = mobhook_home_from(None).unwrap_err().to_string();
+        assert!(err.contains("home directory"));
+        assert!(!err.contains("/tmp"));
+        assert_eq!(
+            mobhook_home_from(Some(PathBuf::from("/home/u"))).unwrap(),
+            PathBuf::from("/home/u/.mobhook")
+        );
+    }
+
+    #[test]
+    fn mobsfscan_is_pinned() {
+        assert!(MOBSFSCAN_SPEC.starts_with("mobsfscan=="));
+    }
 }

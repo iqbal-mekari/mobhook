@@ -4,7 +4,6 @@ use std::process;
 use crate::core::config::MobhookConfig;
 use crate::core::hook_manager::HookManager;
 use crate::core::logger::Logger;
-use crate::core::remote_sync::RemoteSync;
 use crate::presets;
 
 pub fn run(verbose: bool) -> Result<()> {
@@ -21,14 +20,10 @@ pub fn run(verbose: bool) -> Result<()> {
 
     let config = MobhookConfig::load(&config_path)?;
 
-    if let Some(ref remote) = config.remote {
-        logger.info("Syncing remote preset rules...");
-        let sync = RemoteSync::new(&logger);
-        sync.force_update(remote)?;
-        logger.line();
-    } else {
-        logger.info("No remote configured -- skipping remote sync.");
-        logger.info("Add a remote.url to mobhook.yaml to sync rules from a remote repo.");
+    // Regeneration only uses bundled presets; remote rules are consumed by
+    // `mobhook fetch`, which syncs on demand.
+    if config.remote.is_some() {
+        logger.info("Remote rules are synced when you run \"mobhook fetch <preset>\".");
         logger.line();
     }
 
