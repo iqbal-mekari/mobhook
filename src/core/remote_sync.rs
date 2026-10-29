@@ -415,6 +415,14 @@ mod tests {
     }
 
     #[test]
+    fn libgit2_has_https_and_ssh_transports() {
+        // git2 >= 0.21 has no default features; remote sync needs both transports.
+        let version = git2::Version::get();
+        assert!(version.https(), "libgit2 built without https");
+        assert!(version.ssh(), "libgit2 built without ssh");
+    }
+
+    #[test]
     fn cache_dir_name_is_stable_sha256_prefix() {
         let tmp = TempDir::new().unwrap();
         let logger = Logger::quiet();
