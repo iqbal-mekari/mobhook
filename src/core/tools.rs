@@ -123,7 +123,10 @@ fn gitleaks_sha256(platform: &str) -> Result<&'static str> {
 }
 
 fn verify_sha256(bytes: &[u8], expected_hex: &str) -> Result<()> {
-    let actual = format!("{:x}", Sha256::digest(bytes));
+    let actual: String = Sha256::digest(bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
     if !actual.eq_ignore_ascii_case(expected_hex) {
         anyhow::bail!("SHA-256 mismatch: expected {expected_hex}, got {actual}");
     }
