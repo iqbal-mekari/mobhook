@@ -14,6 +14,10 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    outputs:
+      # "true" only for a SemVer prerelease tag (e.g. v1.2.3-rc.1); consumed by
+      # the release job (GitHub prerelease flag) and update-homebrew (skip).
+      prerelease: ${{ steps.channel.outputs.prerelease }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -23,6 +27,18 @@ jobs:
         env:
           RELEASE_TAG: ${{ github.ref_name }}
         run: bash .github/scripts/validate-release-tag.sh
+      - name: Classify release channel
+        id: channel
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          # The tag was validated as strict SemVer above, so a '-' directly
+          # after MAJOR.MINOR.PATCH is exactly a prerelease suffix.
+          if [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-. ]]; then
+            printf 'prerelease=true\n' >> "$GITHUB_OUTPUT"
+          else
+            printf 'prerelease=false\n' >> "$GITHUB_OUTPUT"
+          fi
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable branch, 2026-10-16
         with:
           toolchain: stable
@@ -112,9 +128,14 @@ jobs:
             dist/mobhook-*.tar.gz
             dist/SHA256SUMS
           generate_release_notes: true
+          # string "true"/"false" from the verify job; "true" marks the release as a prerelease
+          prerelease: ${{ needs.verify.outputs.prerelease }}
 
   update-homebrew:
     needs: [verify, release]
+    # Never let a prerelease tag overwrite the stable Homebrew formula.
+    # Fail-closed: runs only when verify explicitly classified the tag as stable.
+    if: needs.verify.outputs.prerelease == 'false'
     runs-on: ubuntu-latest
     environment: PRODUCTION
     env:

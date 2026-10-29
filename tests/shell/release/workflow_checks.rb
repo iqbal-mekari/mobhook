@@ -111,6 +111,41 @@ if rel
   check("release job writes SHA256SUMS before upload", rs.include?("> SHA256SUMS"))
   gh = jobs["release"]["steps"].find { |s| s["uses"].to_s.start_with?("softprops/action-gh-release@") }
   check("SHA256SUMS is uploaded as a release asset", gh && gh["with"]["files"].include?("SHA256SUMS"))
+  # --- prerelease guard ---
+  check("verify job exposes prerelease output",
+        jobs["verify"]["outputs"] == { "prerelease" => "${{ steps.channel.outputs.prerelease }}" }, jobs["verify"]["outputs"].inspect)
+  ch = jobs["verify"]["steps"].find { |s| s["id"] == "channel" }
+  check("channel step exists after the tag validation step",
+        ch && jobs["verify"]["steps"].index(ch) > jobs["verify"]["steps"].index(vs))
+  check("channel step reads tag from env RELEASE_TAG only",
+        ch && ch["env"] == { "RELEASE_TAG" => "${{ github.ref_name }}" } && !ch["run"].include?("${{"))
+  check("channel step writes prerelease=true/false to GITHUB_OUTPUT",
+        ch && ch["run"].include?("prerelease=true") && ch["run"].include?("prerelease=false") && ch["run"].include?("$GITHUB_OUTPUT"))
+  check("release job passes prerelease from verify output to action-gh-release",
+        gh && gh["with"]["prerelease"] == "${{ needs.verify.outputs.prerelease }}", gh && gh["with"]["prerelease"].inspect)
+  check("release job still needs verify (for the output)", Array(jobs["release"]["needs"]).include?("verify"))
+  check("update-homebrew is skipped unless verify says prerelease == 'false' (fail-closed)",
+        jobs["update-homebrew"]["if"].to_s.strip == "needs.verify.outputs.prerelease == 'false'", jobs["update-homebrew"]["if"].inspect)
+  check("update-homebrew still needs verify and release",
+        (%w[verify release] - Array(jobs["update-homebrew"]["needs"])).empty?)
+  check("only update-homebrew carries a job-level if", jobs.reject { |k, _| k == "update-homebrew" }.values.none? { |j| j.key?("if") })
+  # Behavioural: run the channel step's bash against sample tags.
+  if ch
+    require "tmpdir"
+    require "open3"
+    {
+      "v0.4.0-rc.1" => "true", "v1.2.3-beta" => "true", "v1.2.3-0" => "true",
+      "v0.4.0" => "false", "v10.20.30" => "false", "v1.2.3-" => "false"
+    }.each do |tag, want|
+      Dir.mktmpdir do |d|
+        out = File.join(d, "out")
+        File.write(out, "")
+        _o, _e, st = Open3.capture3({ "RELEASE_TAG" => tag, "GITHUB_OUTPUT" => out }, "bash", "-c", ch["run"])
+        got = File.read(out).strip
+        check("channel step: #{tag} => prerelease=#{want}", st.success? && got == "prerelease=#{want}", got)
+      end
+    end
+  end
   inst = jobs["build"]["steps"].find { |s| s["name"] == "Install cross" }
   check("cross installed with --locked and a --tag/--rev",
         inst && inst["run"].include?("--locked") && inst["run"] =~ /--(tag|rev) \S+/)
