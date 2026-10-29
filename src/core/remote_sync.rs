@@ -53,7 +53,10 @@ impl<'a> RemoteSync<'a> {
     }
 
     fn cache_dir_for(&self, url: &str) -> Result<PathBuf> {
-        let hash = format!("{:x}", Sha256::digest(url.as_bytes()));
+        let hash: String = Sha256::digest(url.as_bytes())
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
         let short = &hash[..12];
         Ok(self.cache_base()?.join(short))
     }
@@ -409,6 +412,15 @@ mod tests {
             url: url.to_string(),
             ref_: ref_.to_string(),
         }
+    }
+
+    #[test]
+    fn cache_dir_name_is_stable_sha256_prefix() {
+        let tmp = TempDir::new().unwrap();
+        let logger = Logger::quiet();
+        let dir = sync_in(&tmp, &logger).cache_dir_for("abc").unwrap();
+        // SHA-256("abc") starts with ba7816bf8f01cfea...; keeps existing caches valid.
+        assert_eq!(dir.file_name().unwrap(), "ba7816bf8f01");
     }
 
     /// Local origin repo on branch `main`; returns the commit id of each commit.
