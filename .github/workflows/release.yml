@@ -1,14 +1,37 @@
 name: Release
 
+# GitHub tag filters are globs, not regexes: `+` repeats the preceding
+# character class, `*` matches any run of non-`/` characters. This pattern is
+# therefore only a coarse pre-filter (it also admits e.g. `v1.2.3foo`);
+# the `verify` job enforces strict SemVer and rejects anything else.
 on:
   push:
-    tags: ["v*", "[0-9]+.*"]
+    tags: ["v[0-9]+.[0-9]+.[0-9]+*"]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate release tag
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: bash .github/scripts/validate-release-tag.sh
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable branch, 2026-10-16
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Test
+        run: cargo test --locked
+
   build:
+    needs: verify
     strategy:
       matrix:
         include:
@@ -24,128 +47,123 @@ jobs:
             use-cross: true
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable branch, 2026-10-16
+        with:
+          toolchain: stable
           targets: ${{ matrix.target }}
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - name: Install cross
         if: matrix.use-cross
-        run: cargo install cross --git https://github.com/cross-rs/cross
+        run: cargo install cross --locked --git https://github.com/cross-rs/cross --tag v0.2.5 # commit 88f49ff79e777bef6d3564531636ee4d3cc2f8d2
       - name: Build
+        env:
+          TARGET: ${{ matrix.target }}
+          USE_CROSS: ${{ matrix.use-cross }}
         run: |
-          if [ "${{ matrix.use-cross }}" = "true" ]; then
-            cross build --release --target ${{ matrix.target }}
+          if [ "$USE_CROSS" = "true" ]; then
+            cross build --release --locked --target "$TARGET"
           else
-            cargo build --release --target ${{ matrix.target }}
+            cargo build --release --locked --target "$TARGET"
           fi
       - name: Package
+        env:
+          TARGET: ${{ matrix.target }}
         run: |
-          cd target/${{ matrix.target }}/release
-          tar czf mobhook-${{ matrix.target }}.tar.gz mobhook
-          mv mobhook-${{ matrix.target }}.tar.gz ../../..
+          tar czf "mobhook-$TARGET.tar.gz" -C "target/$TARGET/release" mobhook
+          shasum -a 256 "mobhook-$TARGET.tar.gz" > "mobhook-$TARGET.tar.gz.sha256"
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: mobhook-${{ matrix.target }}
-          path: mobhook-${{ matrix.target }}.tar.gz
+          path: |
+            mobhook-${{ matrix.target }}.tar.gz
+            mobhook-${{ matrix.target }}.tar.gz.sha256
+          if-no-files-found: error
 
   release:
-    needs: build
+    needs: [verify, build]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - uses: actions/download-artifact@v4
-      - name: Create release
-        uses: softprops/action-gh-release@v2
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          files: "*/mobhook-*.tar.gz"
+          path: dist
+          merge-multiple: true
+      - name: Verify artifacts and write SHA256SUMS
+        run: |
+          cd dist
+          for t in aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-musl aarch64-unknown-linux-musl; do
+            f="mobhook-$t.tar.gz"
+            [ -f "$f" ] && [ -f "$f.sha256" ] || { echo "missing artifact for $t" >&2; exit 1; }
+            # per-artifact checksum written by the build job: detects any change in transit
+            shasum -a 256 -c "$f.sha256"
+          done
+          shasum -a 256 mobhook-*.tar.gz > SHA256SUMS
+          shasum -a 256 -c SHA256SUMS
+          [ "$(wc -l < SHA256SUMS | tr -d ' ')" = "4" ] || { echo "unexpected SHA256SUMS size" >&2; exit 1; }
+      - name: Create release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
+        with:
+          files: |
+            dist/mobhook-*.tar.gz
+            dist/SHA256SUMS
           generate_release_notes: true
 
   update-homebrew:
-    needs: release
+    needs: [verify, release]
     runs-on: ubuntu-latest
     environment: PRODUCTION
+    env:
+      RELEASE_TAG: ${{ github.ref_name }}
     steps:
-      - name: Extract version from tag
-        id: version
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+      - name: Checkout scripts
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
-      - name: Download release assets and compute checksums
+      - name: Download release assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          gh release download "$GITHUB_REF_NAME" \
+          gh release download "$RELEASE_TAG" \
             -R "$GITHUB_REPOSITORY" \
-            -D /tmp/assets
-
-          ARM_MAC=$(shasum -a 256 /tmp/assets/mobhook-aarch64-apple-darwin.tar.gz | awk '{print $1}')
-          X64_MAC=$(shasum -a 256 /tmp/assets/mobhook-x86_64-apple-darwin.tar.gz | awk '{print $1}')
-          ARM_LINUX=$(shasum -a 256 /tmp/assets/mobhook-aarch64-unknown-linux-musl.tar.gz | awk '{print $1}')
-          X64_LINUX=$(shasum -a 256 /tmp/assets/mobhook-x86_64-unknown-linux-musl.tar.gz | awk '{print $1}')
-
-          echo "ARM_MAC=$ARM_MAC" >> "$GITHUB_OUTPUT"
-          echo "X64_MAC=$X64_MAC" >> "$GITHUB_OUTPUT"
-          echo "ARM_LINUX=$ARM_LINUX" >> "$GITHUB_OUTPUT"
-          echo "X64_LINUX=$X64_LINUX" >> "$GITHUB_OUTPUT"
-        id: checksums
+            -D "$RUNNER_TEMP/assets" \
+            -p 'mobhook-*.tar.gz' -p SHA256SUMS
 
       - name: Checkout homebrew tap
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           repository: iqbal-mekari/homebrew-mobhook
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           path: homebrew-mobhook
+          persist-credentials: false
 
-      - name: Update formula
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-          ARM_MAC: ${{ steps.checksums.outputs.ARM_MAC }}
-          X64_MAC: ${{ steps.checksums.outputs.X64_MAC }}
-          ARM_LINUX: ${{ steps.checksums.outputs.ARM_LINUX }}
-          X64_LINUX: ${{ steps.checksums.outputs.X64_LINUX }}
+      - name: Verify assets and render formula
         run: |
-          cat > homebrew-mobhook/Formula/mobhook.rb <<EOF
-          class Mobhook < Formula
-            desc "Mobile-first git hooks manager"
-            homepage "https://github.com/iqbal-mekari/mobhook"
-            version "${VERSION}"
-            license "MIT"
-
-            on_macos do
-              if Hardware::CPU.arm?
-                url "https://github.com/iqbal-mekari/mobhook/releases/download/v${VERSION}/mobhook-aarch64-apple-darwin.tar.gz"
-                sha256 "${ARM_MAC}"
-              else
-                url "https://github.com/iqbal-mekari/mobhook/releases/download/v${VERSION}/mobhook-x86_64-apple-darwin.tar.gz"
-                sha256 "${X64_MAC}"
-              end
-            end
-
-            on_linux do
-              if Hardware::CPU.arm?
-                url "https://github.com/iqbal-mekari/mobhook/releases/download/v${VERSION}/mobhook-aarch64-unknown-linux-musl.tar.gz"
-                sha256 "${ARM_LINUX}"
-              else
-                url "https://github.com/iqbal-mekari/mobhook/releases/download/v${VERSION}/mobhook-x86_64-unknown-linux-musl.tar.gz"
-                sha256 "${X64_LINUX}"
-              end
-            end
-
-            def install
-              bin.install "mobhook"
-            end
-
-            test do
-              assert_match "mobhook", shell_output("#{bin}/mobhook --version")
-            end
-          end
-          EOF
+          cd "$RUNNER_TEMP/assets"
+          # every downloaded tarball must match the checksums published by the release job
+          shasum -a 256 -c SHA256SUMS
+          sum_of() {
+            awk -v f="$1" '$2 == f { print $1; n++ } END { exit (n == 1 ? 0 : 1) }' SHA256SUMS
+          }
+          ARM_MAC="$(sum_of mobhook-aarch64-apple-darwin.tar.gz)"
+          X64_MAC="$(sum_of mobhook-x86_64-apple-darwin.tar.gz)"
+          ARM_LINUX="$(sum_of mobhook-aarch64-unknown-linux-musl.tar.gz)"
+          X64_LINUX="$(sum_of mobhook-x86_64-unknown-linux-musl.tar.gz)"
+          cd "$GITHUB_WORKSPACE"
+          bash .github/scripts/render-formula.sh "${RELEASE_TAG#v}" \
+            "$ARM_MAC" "$X64_MAC" "$ARM_LINUX" "$X64_LINUX" \
+            homebrew-mobhook/Formula/mobhook.rb
 
       - name: Commit and push
         env:
-          VERSION: ${{ steps.version.outputs.version }}
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: |
+          chmod u+x .github/scripts/git-askpass.sh
           cd homebrew-mobhook
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -153,6 +171,9 @@ jobs:
           if git diff --cached --quiet; then
             echo "Formula already up to date, skipping."
           else
-            git commit -m "Update mobhook to v${VERSION}"
-            git push
+            git commit -m "Update mobhook to ${RELEASE_TAG}"
+            # token reaches git only through the environment via GIT_ASKPASS
+            GIT_ASKPASS="$GITHUB_WORKSPACE/.github/scripts/git-askpass.sh" \
+              GIT_TERMINAL_PROMPT=0 \
+              git -c credential.helper= push origin HEAD
           fi
