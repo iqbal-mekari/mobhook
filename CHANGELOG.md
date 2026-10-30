@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-30
+
+### Changed
+- Dependencies: `git2` 0.19 -> 0.21, `sha2` 0.10 -> 0.11, `dirs` 6 -> 7, `serde` 1.0.229,
+  `thiserror` 2.0.21. `git2` 0.21 has no default features, so `https` and `ssh` are now
+  enabled explicitly (a test fails if libgit2 lacks either transport). No behavior change
+  for users; the remote cache directory names are unchanged (pinned by a test).
+- Release workflow actions bumped (all still pinned to commit SHAs): `checkout` 7.0.1,
+  `upload-artifact` 7.0.2, `download-artifact` 8.0.2, `action-gh-release` 3.0.3.
+  `download-artifact` now errors on an artifact digest mismatch (previously a warning).
+
 ## [0.4.0] - 2026-10-29
 
 ### Changed (breaking)
@@ -93,7 +104,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Use rustls-tls (no OpenSSL) and fix clippy warnings.
 - Add `vendored-openssl` to git2 for cross-platform builds.
 
-[Unreleased]: https://github.com/iqbal-mekari/mobhook/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/iqbal-mekari/mobhook/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/iqbal-mekari/mobhook/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/iqbal-mekari/mobhook/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/iqbal-mekari/mobhook/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/iqbal-mekari/mobhook/compare/v0.1.1...v0.2.0
