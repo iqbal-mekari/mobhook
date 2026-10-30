@@ -1,6 +1,6 @@
 [package]
 name = "mobhook"
-version = "0.4.2-rc.1"
+version = "0.4.2"
 edition = "2021"
 description = "Mobile-first git hooks manager — like Husky, but for mobile devs"
 license = "MIT"

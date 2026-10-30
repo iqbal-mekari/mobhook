@@ -21,11 +21,11 @@ We will acknowledge receipt within 48 hours and provide a detailed response with
 
 ## Supported Versions
 
-Based on the published tags (v0.1.0, v0.1.1, v0.2.0, v0.3.0, v0.4.0, v0.4.1), the latest release is v0.4.1.
+Based on the published tags (v0.1.0, v0.1.1, v0.2.0, v0.3.0, v0.4.0, v0.4.1, v0.4.2), the latest release is v0.4.2.
 
 | Version | Supported |
 |---------|-----------|
-| 0.4.x (latest: v0.4.1) | Yes |
+| 0.4.x (latest: v0.4.2) | Yes |
 | < 0.4.0 | No |
 
 Only the latest release receives security fixes. Upgrade to the newest tag before reporting.

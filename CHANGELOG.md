@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-10-30
+
 ### Security
 - Updated vulnerable transitive dependencies flagged by RustSec in `Cargo.lock`: `rustls`
   0.23.46, `rustls-webpki` 0.103.16, `webpki-roots` 1.0.11 (TLS stack used for remote
@@ -127,7 +129,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Use rustls-tls (no OpenSSL) and fix clippy warnings.
 - Add `vendored-openssl` to git2 for cross-platform builds.
 
-[Unreleased]: https://github.com/iqbal-mekari/mobhook/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/iqbal-mekari/mobhook/compare/v0.4.2...HEAD
+[0.4.2]: https://github.com/iqbal-mekari/mobhook/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/iqbal-mekari/mobhook/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/iqbal-mekari/mobhook/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/iqbal-mekari/mobhook/compare/v0.2.0...v0.3.0
