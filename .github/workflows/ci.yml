@@ -5,6 +5,9 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  schedule:
+    # Weekly (Mon 05:17 UTC): surface new advisories without needing a commit.
+    - cron: "17 5 * * 1"
 
 permissions:
   contents: read
@@ -14,6 +17,8 @@ env:
 
 jobs:
   test:
+    # The weekly schedule exists only for the advisory audit below.
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -28,5 +33,21 @@ jobs:
       - run: cargo clippy --locked -- -D warnings
       - run: cargo test --locked
       - run: cargo build --release --locked
-      # TODO(security): add `cargo audit` / `cargo deny` once a pinned, verified
-      # install method is chosen (cargo-audit is not preinstalled on runners).
+
+  # Supply-chain advisory check (RustSec). Own job, read-only token, no secrets.
+  # `cargo audit` exits non-zero only for vulnerabilities; unmaintained and
+  # yanked crates are printed as warnings and do not fail the build.
+  audit:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable branch, 2026-10-16
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - run: cargo install cargo-audit --locked --version 0.22.2
+      - run: cargo audit
