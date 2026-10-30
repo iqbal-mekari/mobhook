@@ -472,6 +472,101 @@ run_script "$CI_SH" $(ci_env) MOBSFSCAN_VERSION='1;touch PWNED'
 assert_ne "S6 invalid MOBSFSCAN_VERSION is rejected" "0" "$RC"
 if [ -e "$PROJ/PWNED" ] || [ -e "$PROJ/../PWNED" ]; then bad "S6 pin value never executed"; else ok "S6 pin value never executed"; fi
 
+section "ci-security-scan.sh: overall severity mapping"
+
+# make_ms_sev_report <file> <severity|MISSING>... — one rule per argument, one file each
+make_ms_sev_report() {
+    local out="$1"; shift
+    local i=0 sev rules='{}'
+    for sev in "$@"; do
+        i=$((i + 1))
+        rules=$(printf '%s' "$rules" | jq --arg id "rule_$i" --arg sev "$sev" \
+            '.[$id] = {metadata: (if $sev == "MISSING" then {cwe:"CWE-0",description:"d"} else {severity:$sev,cwe:"CWE-0",description:"d"} end),
+                       files:[{file_path:"/p/F.kt",match_lines:[1],match_string:"x"}]}')
+    done
+    jq -n --argjson r "$rules" '{results:$r}' > "$out"
+}
+
+# sev_case <name> <gl_count|-> <ms severities...>: runs the CI script, sets SUM
+sev_case() {
+    local name="$1" glc="$2"; shift 2
+    local extra="" mscount="$#"
+    new_case "$name"
+    if [ "$glc" != "-" ] && [ "$glc" -gt 0 ]; then
+        make_gl_report "$CASE_DIR/gl.json" "$glc"
+        extra="$extra STUB_GL_EXIT=1 STUB_GL_REPORT_SRC=$CASE_DIR/gl.json"
+    elif [ "$glc" = "0" ]; then
+        make_gl_report "$CASE_DIR/gl.json" 0
+        extra="$extra STUB_GL_REPORT_SRC=$CASE_DIR/gl.json"
+    fi
+    if [ "$mscount" -gt 0 ]; then
+        make_ms_sev_report "$CASE_DIR/ms.json" "$@"
+        extra="$extra STUB_MS_EXIT=1 STUB_MS_JSON_SRC=$CASE_DIR/ms.json"
+    fi
+    # shellcheck disable=SC2046,SC2086
+    run_script "$CI_SH" $(ci_env) $extra
+    SUM="$PROJ/.hook-reports/scan-summary.json"
+}
+
+sev_case sev_none 0
+assert_eq "SEV no findings => none (not high)" "none" "$(jq -r .severity "$SUM")"
+assert_eq "SEV no findings => status pass" "pass" "$(jq -r .status "$SUM")"
+
+sev_case sev_low 0 INFO
+assert_eq "SEV only INFO mobsfscan => low" "low" "$(jq -r .severity "$SUM")"
+sev_case sev_low2 0 LOW INFO
+assert_eq "SEV only LOW/INFO mobsfscan => low" "low" "$(jq -r .severity "$SUM")"
+
+sev_case sev_medium 0 WARNING
+assert_eq "SEV only WARNING mobsfscan => medium" "medium" "$(jq -r .severity "$SUM")"
+sev_case sev_medium2 0 INFO WARNING
+assert_eq "SEV INFO + WARNING mobsfscan => medium (max)" "medium" "$(jq -r .severity "$SUM")"
+sev_case sev_medium_lc 0 warning
+assert_eq "SEV lower-case warning => medium (case-insensitive)" "medium" "$(jq -r .severity "$SUM")"
+
+sev_case sev_high_ms 0 ERROR
+assert_eq "SEV mobsfscan ERROR => high" "high" "$(jq -r .severity "$SUM")"
+sev_case sev_high_ms2 0 INFO WARNING ERROR
+assert_eq "SEV mobsfscan mix with ERROR => high" "high" "$(jq -r .severity "$SUM")"
+
+sev_case sev_gl_only 3
+assert_eq "SEV any gitleaks finding => high" "high" "$(jq -r .severity "$SUM")"
+sev_case sev_gl_low_ms 2 INFO
+assert_eq "SEV gitleaks finding + INFO mobsfscan => high" "high" "$(jq -r .severity "$SUM")"
+
+sev_case sev_unknown 0 MISSING
+assert_eq "SEV missing mobsfscan severity => high (fail safe)" "high" "$(jq -r .severity "$SUM")"
+sev_case sev_unknown2 0 BOGUS
+assert_eq "SEV unknown mobsfscan severity => high (fail safe)" "high" "$(jq -r .severity "$SUM")"
+sev_case sev_unknown3 0 INFO MISSING
+assert_eq "SEV INFO + missing severity => high (fail safe)" "high" "$(jq -r .severity "$SUM")"
+
+# The previously broken case: BOTH reports present, computed from both
+sev_case sev_both_high 1 WARNING
+assert_eq "SEV both reports present (gitleaks + WARNING) => high" "high" "$(jq -r .severity "$SUM")"
+assert_eq "SEV both reports: gitleaks issues counted" "1" "$(jq -r .gitleaks.issues "$SUM")"
+assert_eq "SEV both reports: mobsfscan issues counted" "1" "$(jq -r .mobsfscan.issues "$SUM")"
+sev_case sev_both_crit 1 CRITICAL
+assert_eq "SEV both reports present (gitleaks + CRITICAL) => critical" "critical" "$(jq -r .severity "$SUM")"
+sev_case sev_both_clean 0 INFO
+assert_eq "SEV gitleaks clean + INFO mobsfscan => low (not forced high)" "low" "$(jq -r .severity "$SUM")"
+
+# A crashed scanner with no findings is a failed check: never reported as none
+new_case sev_crash
+# shellcheck disable=SC2046
+run_script "$CI_SH" $(ci_env) STUB_GL_EXIT=2
+assert_eq "SEV gitleaks crash (no report) => high (fail safe)" "high" "$(jq -r .severity "$PROJ/.hook-reports/scan-summary.json")"
+
+# scan-summary.json stays valid JSON with the same keys
+sev_case sev_schema 2 WARNING
+if jq -e . "$SUM" >/dev/null 2>&1; then ok "SEV scan-summary.json is valid JSON"; else bad "SEV scan-summary.json is valid JSON"; fi
+assert_eq "SEV scan-summary.json top-level keys unchanged" \
+    "branch,commit,gitleaks,mobsfscan,project,severity,status,timestamp,totalDuration,totalFailures,totalIssues" \
+    "$(jq -r 'keys | join(",")' "$SUM")"
+assert_eq "SEV scan-summary.json gitleaks keys unchanged" "duration,issues,severityBreakdown,summary" "$(jq -r '.gitleaks | keys | join(",")' "$SUM")"
+assert_eq "SEV scan-summary.json mobsfscan keys unchanged" "duration,issues,severityBreakdown,summary" "$(jq -r '.mobsfscan | keys | join(",")' "$SUM")"
+assert_eq "SEV mobsfscan severityBreakdown unchanged" "1" "$(jq -r '.mobsfscan.severityBreakdown.WARNING' "$SUM")"
+
 # ─── 5. Real gitleaks: config validity and allowlist anchoring (S7) ────────
 
 section "S7 gitleaks.toml (real gitleaks)"

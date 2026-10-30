@@ -17,6 +17,20 @@
 #   .hook-reports/mobsfscan-report.json   — mobsfscan findings
 #   .hook-reports/scan-summary.json       — machine-readable summary for Jenkins
 #
+# Severity mapping (scan-summary.json "severity", one value for the whole scan):
+#   none      no findings and no failed check
+#   low       only mobsfscan INFO / LOW findings
+#   medium    mobsfscan WARNING / MEDIUM is the worst finding
+#   high      any gitleaks finding (reports carry no Severity field, so every
+#             finding counts as high); mobsfscan ERROR / HIGH; any unknown or
+#             missing mobsfscan severity (fail safe: unknown ranks as high);
+#             a failed check with no classified finding (tool crash, unusable
+#             report)
+#   critical  mobsfscan CRITICAL (not emitted by the mobsfscan rules inspected
+#             here: ERROR/WARNING/INFO; kept for forward compatibility)
+# mobsfscan severity is read from results.<rule>.metadata.severity,
+# case-insensitive. Only the VALUE changed; JSON keys are unchanged.
+#
 # Required tools: gitleaks, mobsfscan, jq
 #
 # Optional environment:
@@ -358,14 +372,36 @@ echo ""
 # ─── Determine Overall Severity ─────────────────────────────────────────────
 
 TOTAL_ISSUES=$((GITLEAKS_ISSUES + MOBSFSCAN_ISSUES))
-if [ "$TOTAL_FAILURES" -gt 0 ]; then
-    HAS_CRITICAL=$(echo "$GITLEAKS_SEVERITY_SUMMARY $MOBSFSCAN_SEVERITY_SUMMARY" | jq -r 'if has("ERROR") or has("CRITICAL") or has("HIGH") then "yes" else "no" end' 2>/dev/null || echo "no")
-    if [ "$HAS_CRITICAL" = "yes" ]; then
-        OVERALL_SEVERITY="critical"
-    else
-        OVERALL_SEVERITY="high"
-    fi
-fi
+# Overall severity = the highest level over BOTH reports (see "Severity
+# mapping" in the header). Computed by ONE jq call with each report summary
+# passed as its own --argjson: piping both JSON documents into a single
+# `has(...)` filter made jq run once per document and emit two lines, so the
+# old comparison against "yes" could never match.
+# Any jq failure falls back to "high" (fail safe, never "none").
+OVERALL_SEVERITY=$(jq -n -r \
+    --argjson gl "$GITLEAKS_SEVERITY_SUMMARY" \
+    --argjson ms "$MOBSFSCAN_SEVERITY_SUMMARY" \
+    --argjson glIssues "$GITLEAKS_ISSUES" \
+    --argjson msIssues "$MOBSFSCAN_ISSUES" \
+    --argjson failures "$TOTAL_FAILURES" '
+    def rank: ascii_downcase
+        | if . == "critical" then 4
+          elif . == "high" or . == "error" then 3
+          elif . == "medium" or . == "warning" then 2
+          elif . == "low" or . == "info" then 1
+          else 3 end;                                    # unknown => high
+    ( [ (if $glIssues > 0 then 3 else 0 end),            # any gitleaks finding
+        (if $msIssues > 0 and ($ms | length) == 0 then 3 else 0 end),
+        ($ms | keys[] | rank),
+        (if $failures > 0 and $glIssues + $msIssues == 0
+            then 3 else 0 end) ]                         # crashed check => high
+      | max ) as $r
+    | ["none", "low", "medium", "high", "critical"][$r]
+' 2>/dev/null) || OVERALL_SEVERITY="high"
+case "$OVERALL_SEVERITY" in
+    none|low|medium|high|critical) ;;
+    *) OVERALL_SEVERITY="high" ;;
+esac
 
 SCAN_STATUS="pass"
 [ "$TOTAL_FAILURES" -gt 0 ] && SCAN_STATUS="fail"
