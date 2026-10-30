@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Security preset: `ci-security-scan.sh` computed `OVERALL_SEVERITY` by feeding two JSON
+  documents to one `jq` call, so any failing scan reported `high`. It now reports `none`,
+  `low`, `medium`, `high` or `critical` from the findings (any gitleaks finding, a mobsfscan
+  ERROR/HIGH, an unknown severity or a tool crash still report `high`). `scan-summary.json`
+  keys, `status`, exit codes and `FAIL_ON_FINDINGS` are unchanged; consumers that assumed
+  `high` for every failing scan should be checked.
+
+### Added
+- CI `audit` job: `cargo audit` (pinned `cargo-audit`, read-only token) on pull requests,
+  pushes to `main` and weekly; fails on RustSec vulnerabilities, warns on unmaintained or
+  yanked crates.
+
+### Changed
+- Dependencies: `anyhow` 1.0.104, `bytes` 1.12.1, `regex` 1.13.1, `flate2` 1.1.10.
+- `SECURITY.md` now points to GitHub private vulnerability reporting; README documents
+  `mode` fallback behavior.
+
 ## [0.4.1] - 2026-10-30
 
 ### Changed
