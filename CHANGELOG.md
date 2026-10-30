@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- Updated vulnerable transitive dependencies flagged by RustSec in `Cargo.lock`: `rustls`
+  0.23.46, `rustls-webpki` 0.103.16, `webpki-roots` 1.0.11 (TLS stack used for remote
+  preset downloads), `quinn-proto` 0.11.19, `libz-sys` 1.1.31, and `tokio` 1.54.1.
+
 ### Fixed
 - Security preset: `ci-security-scan.sh` computed `OVERALL_SEVERITY` by feeding two JSON
   documents to one `jq` call, so any failing scan reported `high`. It now reports `none`,
