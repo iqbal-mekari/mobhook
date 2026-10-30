@@ -163,6 +163,42 @@ if ci
   check("ci cargo test uses --locked", runs.any? { |r| r.start_with?("cargo test --locked") })
   check("ci cargo clippy uses --locked", runs.any? { |r| r.start_with?("cargo clippy --locked") })
   check("ci release build uses --locked", runs.any? { |r| r.start_with?("cargo build --release --locked") })
+  on = ci["on"] || ci[true]
+  check("ci triggers: push to main, pull_request to main, schedule",
+        on.is_a?(Hash) && on["push"] == { "branches" => ["main"] } &&
+        on["pull_request"] == { "branches" => ["main"] } && on["schedule"].is_a?(Array), on.inspect)
+  crons = Array(on["schedule"]).map { |e| e["cron"].to_s }
+  check("ci schedule is a single weekly cron (5 fields, day-of-week set)",
+        crons.length == 1 && crons[0].split.length == 5 && crons[0].split[2..3] == %w[* *] && crons[0].split[4] =~ /\A[0-6]\z/, crons.inspect)
+  check("ci has no pull_request_target / workflow_run trigger", !on.key?("pull_request_target") && !on.key?("workflow_run"))
+  check("scheduled run skips the test job", ci["jobs"]["test"]["if"].to_s.strip == "github.event_name != 'schedule'", ci["jobs"]["test"]["if"].inspect)
+  check("ci workflow does not reference secrets", File.read(File.join(wf_dir, "ci.yml")) !~ /\$\{\{\s*secrets\./)
+  au = ci["jobs"]["audit"]
+  check("audit job exists", au.is_a?(Hash))
+  if au
+    asteps = au["steps"] || []
+    check("audit job permissions are exactly contents: read", au["permissions"] == { "contents" => "read" }, au["permissions"].inspect)
+    check("audit job has no job-level if (runs on every trigger)", !au.key?("if"))
+    check("audit job has no env/secrets passthrough", !au.key?("env") && asteps.none? { |s| s.key?("env") })
+    check("audit job uses only SHA-pinned actions",
+          asteps.select { |s| s["uses"] }.all? { |s| s["uses"] =~ /\A[^@]+@[0-9a-f]{40}\z/ } && asteps.any? { |s| s["uses"] })
+    co = asteps.find { |s| s["uses"].to_s.start_with?("actions/checkout@") }
+    check("audit checkout sets persist-credentials: false", co && (co["with"] || {})["persist-credentials"] == false)
+    check("audit job uses the repo-pinned rust-cache",
+          asteps.any? { |s| s["uses"].to_s == steps_of(ci).find { |jn, x| jn == "test" && x["uses"].to_s.start_with?("Swatinem/rust-cache@") }&.last&.fetch("uses") })
+    ar = asteps.map { |s| s["run"].to_s }
+    check("audit installs cargo-audit with --locked and an exact x.y.z --version",
+          ar.any? { |r| r =~ /\Acargo install cargo-audit --locked --version \d+\.\d+\.\d+\z/ }, ar.inspect)
+    ins = ar.index { |r| r.start_with?("cargo install cargo-audit") }
+    run = ar.index { |r| r.strip == "cargo audit" }
+    check("audit runs plain `cargo audit` after install (fails on vulnerabilities only)",
+          ins && run && run > ins, ar.inspect)
+    check("audit does not escalate warnings (no --deny warnings/unmaintained/yanked)",
+          ar.none? { |r| r =~ /--deny|-D\s|deny\s*=/ })
+  end
+  others = ci["jobs"].reject { |k, _| k == "audit" }
+  check("other ci jobs keep default read-only permissions (no job-level override)",
+        others.values.none? { |j| j.key?("permissions") })
 end
 
 # --- dependabot -------------------------------------------------------------

@@ -55,7 +55,12 @@ for p in '.DS_Store' '.env*' '*.pem' '*.key' '*.p12' '*.jks' 'google-services.js
   if grep -qxF "$p" "$REPO_ROOT/.gitignore"; then pass ".gitignore has $p"; else fail ".gitignore missing $p"; fi
 done
 grep -q 'Private Vulnerability Reporting' "$REPO_ROOT/SECURITY.md" && pass "SECURITY.md mentions private reporting" || fail "SECURITY.md private reporting"
-grep -q 'TO BE FILLED IN' "$REPO_ROOT/SECURITY.md" && pass "SECURITY.md contact is a placeholder" || fail "SECURITY.md placeholder"
+grep -q 'security/advisories/new' "$REPO_ROOT/SECURITY.md" && pass "SECURITY.md links the private advisory form" || fail "SECURITY.md advisory link"
+if grep -qiE 'TO BE FILLED IN|to be enabled|<SECURITY-CONTACT|[A-Za-z0-9._-]+@[A-Za-z0-9.-]+' "$REPO_ROOT/SECURITY.md"; then
+  fail "SECURITY.md has no placeholder or email address"
+else
+  pass "SECURITY.md has no placeholder or email address"
+fi
 grep -q '^## \[Unreleased\]' "$REPO_ROOT/CHANGELOG.md" && pass "CHANGELOG has Unreleased" || fail "CHANGELOG Unreleased"
 for v in 0.3.0 0.2.0 0.1.1 0.1.0; do
   grep -q "^## \[$v\]" "$REPO_ROOT/CHANGELOG.md" && pass "CHANGELOG has $v" || fail "CHANGELOG missing $v"
