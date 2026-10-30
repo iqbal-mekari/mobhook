@@ -6,11 +6,9 @@ If you discover a security vulnerability in mobhook, please report it responsibl
 
 **Do NOT open a public GitHub issue.**
 
-Preferred channel: GitHub Private Vulnerability Reporting (Security tab > "Report a vulnerability").
-Status: **to be enabled by maintainers** — until it is enabled, use the email channel below.
-
-Email channel: `<SECURITY-CONTACT-EMAIL — TO BE FILLED IN BY MAINTAINERS>`
-(placeholder: no security mailbox has been published yet).
+Report privately through GitHub Private Vulnerability Reporting: open the repository's
+**Security** tab and click **"Report a vulnerability"**
+(https://github.com/iqbal-mekari/mobhook/security/advisories/new).
 
 Please include:
 - Description of the vulnerability

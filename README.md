@@ -87,6 +87,7 @@ hooks:
 - **`remote.url`** must be `https://...`, `ssh://...` or scp-style `user@host:path`. `http://`, `git://`, `file://` and local paths are rejected.
 - **No credentials in URLs.** A URL with a password, or a user/token in an `https://` URL, is rejected. Use a git credential helper (`git config credential.helper`) for `https://` or an SSH key in `ssh-agent` for `ssh://`.
 - **Pin `remote.ref` to a full commit SHA** so synced rules cannot change underneath you. A branch or tag still works but prints a warning.
+- **Invalid `mode`:** an unrecognised top-level `mode` falls back to `blocking` (fail-safe); an unrecognised per-step `mode` is an error.
 - **`MOBHOOK=0`** makes the generated hook scripts exit 0 immediately (kill switch).
 
 ## Built-in Presets
