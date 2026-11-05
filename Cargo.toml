@@ -21,7 +21,7 @@ serde = { version = "1", features = ["derive"] }
 serde_yaml = "0.9"
 anyhow = "1"
 thiserror = "2"
-colored = "2"
+colored = "3"
 git2 = { version = "0.21", features = ["https", "ssh", "vendored-openssl"] }
 include_dir = "0.7"
 dirs = "7"
